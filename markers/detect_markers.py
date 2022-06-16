@@ -5,6 +5,7 @@ import time
 import cv2 as cv
 import sys
 import numpy as np
+from camera_calibration.calibrate_camera import calibrate
 from generate_markers import ARUCO_DICT
 
 
@@ -16,9 +17,9 @@ def draw_over_markers(frame, ids, corners, cam_mat, dist_mat):
     # len(ids) should be 1 when there is only 1 marker
     rvec_dict = {}
     tvec_dict = {}
-    for i in range(0,len(ids)):
+    for i in range(0,len(corners)):
         # Estimate pose of each marker and return the values rvec and tvec---different from camera coefficients
-        rvec, tvec, markerPoints = cv.aruco.estimatePoseSingleMarkers(corners[i], 0.02, cam_mat, dist_mat)
+        rvec, tvec, markerPoints = cv.aruco.estimatePoseSingleMarkers(corners[i], 0.023, cam_mat, dist_mat)
         rvec_dict[ids[i]]=rvec
         tvec_dict[ids[i]]=tvec
         cv.aruco.drawAxis(frame, cam_mat, dist_mat, rvec, tvec, 0.01)  # Draw Axis
@@ -84,19 +85,12 @@ def main():
     arucoDict = cv.aruco.Dictionary_get(ARUCO_DICT[args["type"]])
     arucoParams = cv.aruco.DetectorParameters_create()
 
-
     # Define camera parameters - camera matrix and distortion
-    # change this upon calibration
-    focal_length = 1 * 1080
-    cam_mat = np.array([[focal_length, 0, 1080/2],
-                        [0, focal_length,  1080/2],
-                        [0,        0,       1]])
-    dist_mat = np.zeros((4, 1), dtype=np.float64)
+    [ret, cam_mat, dist_mat, rvecs, tvecs] = calibrate('camera_calibration/calibration_images')
     
-
     # initialize the video stream and allow the camera sensor to warm up
     print("[INFO] starting video stream...")
-    cap = cv.VideoCapture(0)
+    cap = cv.VideoCapture(1)
     if not cap.isOpened():
         print("Cannot open camera")
         exit()
@@ -117,12 +111,14 @@ def main():
         # detect ArUco markers in the input frame
         (corners, ids, rejected) = cv.aruco.detectMarkers(frame,
             arucoDict, parameters=arucoParams,
-            cameraMatrix=cam_mat, distCoeff=dist_mat) 
+            cameraMatrix=cam_mat, distCoeff=dist_mat)
 
         # verify *at least* one ArUco marker was detected
         if len(corners) > 0:
             # Draw box and label any detected markers
             frame, rvec_dict, tvec_dict = draw_over_markers(frame, ids, corners, cam_mat, dist_mat)
+            if rejected:
+                frame, rvec_dict, tvec_dict = draw_over_markers(frame, np.array([0]*len(rejected)), rejected, cam_mat, dist_mat)
         else:
             rvec_dict, tvec_dict = None, None
 
