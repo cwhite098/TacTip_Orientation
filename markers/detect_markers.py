@@ -5,8 +5,8 @@ import time
 import cv2 as cv
 import sys
 import numpy as np
-from camera_calibration.calibrate_camera import calibrate
-from generate_markers import ARUCO_DICT
+from markers.camera_calibration.calibrate_camera import calibrate
+from markers.generate_markers import ARUCO_DICT
 
 
 def draw_over_markers(frame, ids, corners, cam_mat, dist_mat):
@@ -56,6 +56,34 @@ def draw_over_markers(frame, ids, corners, cam_mat, dist_mat):
             cv.FONT_HERSHEY_SIMPLEX,
             0.5, (0, 255, 0), 2)
 
+
+    return frame, rvec_dict, tvec_dict
+
+
+def find_markers(args):
+    '''
+    Just a cut down version of main to be imported into collect data
+    Fix the type of the marker.
+    I want the rvec, tvec and the frame as output
+    '''
+    cam_mat = args['cam_mat']
+    dist_mat = args['dist_mat']
+
+    tag_type = 'DICT_4X4_50'
+    arucoDict = cv.aruco.Dictionary_get(ARUCO_DICT[tag_type])
+    arucoParams = cv.aruco.DetectorParameters_create()
+
+    frame, rvec_dict, tvec_dict = draw_over_markers(frame, ids, corners, cam_mat, dist_mat)
+
+    # detect ArUco markers in the input frame
+    (corners, ids, rejected) = cv.aruco.detectMarkers(frame,
+            arucoDict, parameters=arucoParams,
+            cameraMatrix=cam_mat, distCoeff=dist_mat)
+
+    # verify *at least* one ArUco marker was detected
+    if len(corners) > 0:
+        # Draw box and label any detected markers
+        frame, rvec_dict, tvec_dict = draw_over_markers(frame, ids, corners, cam_mat, dist_mat)
 
     return frame, rvec_dict, tvec_dict
 
