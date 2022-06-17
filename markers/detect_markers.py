@@ -60,7 +60,7 @@ def draw_over_markers(frame, ids, corners, cam_mat, dist_mat):
     return frame, rvec_dict, tvec_dict
 
 
-def find_markers(args):
+def find_markers(frame, **args):
     '''
     Just a cut down version of main to be imported into collect data
     Fix the type of the marker.
@@ -73,8 +73,6 @@ def find_markers(args):
     arucoDict = cv.aruco.Dictionary_get(ARUCO_DICT[tag_type])
     arucoParams = cv.aruco.DetectorParameters_create()
 
-    frame, rvec_dict, tvec_dict = draw_over_markers(frame, ids, corners, cam_mat, dist_mat)
-
     # detect ArUco markers in the input frame
     (corners, ids, rejected) = cv.aruco.detectMarkers(frame,
             arucoDict, parameters=arucoParams,
@@ -84,6 +82,8 @@ def find_markers(args):
     if len(corners) > 0:
         # Draw box and label any detected markers
         frame, rvec_dict, tvec_dict = draw_over_markers(frame, ids, corners, cam_mat, dist_mat)
+    else:
+        rvec_dict, tvec_dict = None, None
 
     return frame, rvec_dict, tvec_dict
 
