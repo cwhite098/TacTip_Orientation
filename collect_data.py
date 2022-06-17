@@ -28,10 +28,12 @@ def display_camera(display_name, camera_id, resolution, processing_func, display
     cv.namedWindow(display_name)
 
     cam = cv.VideoCapture(camera_id, cv.CAP_DSHOW)
-    cam.set(cv.CAP_PROP_FRAME_WIDTH, resolution[0]) # set horizontal res
-    cam.set(cv.CAP_PROP_FRAME_HEIGHT, resolution[1]) # set vertical res
+    #cam.set(cv.CAP_PROP_FRAME_WIDTH, resolution[0]) # set horizontal res
+    #cam.set(cv.CAP_PROP_FRAME_HEIGHT, resolution[1]) # set vertical res
+    cam.set(3, resolution[0])
+    cam.set(4, resolution[1])
 
-    if cam.isOpened():
+    if cam.isOpened(): # this is where the external camera is breaking
         ret, frame = cam.read()
     else:
         ret=False
@@ -44,13 +46,23 @@ def display_camera(display_name, camera_id, resolution, processing_func, display
             frame = processing_func(frame, **process_args)
 
         if display_bool:
-            cv.imshow(display_name, frame)
+            if type(frame) == tuple:
+                cv.imshow(display_name, frame[0])
+            else:
+                cv.imshow(display_name, frame)
 
         key = cv.waitKey(20)
         if key == 27:
             print('Closing thread: ' + display_name)
             break
     cv.destroyWindow(display_name)
+
+
+
+def test_camera(camera_id):
+    cap = cv.VideoCapture(camera_id) 
+    if cap is None or not cap.isOpened():
+        print('Warning: unable to open video source: ', camera_id)
 
 
 def process_sensor_frame(frame):
@@ -71,11 +83,15 @@ def main():
     print('Calibrating camera...')
     [ret, cam_mat, dist_mat, rvecs, tvecs] = calibrate('markers/camera_calibration/calibration_images')
 
+    # Test camera sources
+    test_camera(0)
+    test_camera(1)
+    test_camera(3)
 
+    # Initialise camera threads
     sensor1 = camera_thread('Sensor1', 0, (1920,1080), process_sensor_frame, True)
     sensor2 = camera_thread('Sensor2', 1, (1920,1080), process_sensor_frame, True)
-
-    external = camera_thread('external', 2, (480,270), process_sensor_frame, True, cam_mat=cam_mat, dist_mat=dist_mat)
+    external = camera_thread('external', 3, (480,270), find_markers, True, cam_mat=cam_mat, dist_mat=dist_mat)
 
     sensor1.start()
     sensor2.start()
