@@ -65,14 +65,25 @@ def test_camera(camera_id):
         print('Warning: unable to open video source: ', camera_id)
 
 
-def process_sensor_frame(frame):
- 	
-    frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+def process_sensor_frame(frame, **args):
 
-    frame = cv.adaptiveThreshold(frame, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 47, -4) # apply Gaussian adaptive threshold
+    crop = args['crop']
+    threshold = args['threshold']
+    resolution = args['res']
     
-    for i in range(3):
-        frame = cv.pyrDown(frame) # half the size 3 times (to 240x135)
+    # Crop the sensor videos
+    if crop is not None:
+        x0, y0, x1, y1 = crop
+        frame = frame[y0:y1, x0:x1]
+
+    width, offset = threshold
+ 	
+    # Convert to grayscale
+    frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+    # Apply Gaussian filter
+    frame = cv.adaptiveThreshold(frame, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, width, offset) # apply Gaussian adaptive threshold
+    # Change to specified size
+    frame = cv.resize(frame, resolution, interpolation=cv.INTER_AREA)
 
     return frame
 
@@ -84,14 +95,14 @@ def main():
     [ret, cam_mat, dist_mat, rvecs, tvecs] = calibrate('markers/camera_calibration/calibration_images')
 
     # Test camera sources
-    test_camera(0)
-    test_camera(1)
     test_camera(3)
+    test_camera(2)
+    test_camera(1)
 
     # Initialise camera threads
-    sensor1 = camera_thread('Sensor1', 0, (1920,1080), process_sensor_frame, True)
-    sensor2 = camera_thread('Sensor2', 1, (1920,1080), process_sensor_frame, True)
-    external = camera_thread('external', 3, (480,270), find_markers, True, cam_mat=cam_mat, dist_mat=dist_mat)
+    sensor1 = camera_thread('Sensor1', 3, (1920,1080), process_sensor_frame, True, res=(240,135), crop = [300, 0, 1600, 1080], threshold = (47, -4))
+    sensor2 = camera_thread('Sensor2', 1, (1920,1080), process_sensor_frame, True, res=(240,135), crop = [300, 0, 1600, 1080], threshold = (59, -6))
+    external = camera_thread('external', 2, (480,270), find_markers, True, cam_mat=cam_mat, dist_mat=dist_mat)
 
     sensor1.start()
     sensor2.start()
