@@ -20,7 +20,7 @@ def draw_over_markers(frame, ids, corners, cam_mat, dist_mat):
     for i in range(0,len(corners)):
         # Estimate pose of each marker and return the values rvec and tvec---different from camera coefficients
         rvec, tvec, markerPoints = cv.aruco.estimatePoseSingleMarkers(corners[i], 0.023, cam_mat, dist_mat)
-        rvec_dict[str(ids[i])]=rvec.flatten().tolist()
+        rvec_dict[str(ids[i])]=rvec.flatten()
         tvec_dict[str(ids[i])]=tvec.flatten().tolist()
         cv.aruco.drawAxis(frame, cam_mat, dist_mat, rvec, tvec, 0.01)  # Draw Axis
 
