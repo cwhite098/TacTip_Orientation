@@ -1,3 +1,4 @@
+from importlib.resources import path
 from pickle import READONLY_BUFFER
 import cv2 as cv
 import threading
@@ -54,13 +55,13 @@ class collection_thread(threading.Thread):
         # Button press that saves a snap shot of the system
         keyboard.press('s')
         print('[INFO] Saving')
-        capture.set()
         global stamp
-        global capture_counter
         stamp = str(time.ctime())
         stamp=stamp.replace(' ', '_')
         stamp=stamp.replace(':', '-')
-        os.mkdir('data/'+stamp)
+        os.mkdir(PATH+stamp)
+        capture.set()
+        global capture_counter
         time.sleep(3)
         print('Press s to save snapshot')
 
@@ -91,7 +92,7 @@ def process_angles(rvec_dict):
 
         # If the sensors have moved too far in the last 5 frames,
         # set the rotations to the averages of those frames
-        if (np.abs(l_sensor - np.mean(l_buffer,axis=0)) > 1.57).any() or  (np.abs(r_sensor - np.mean(r_buffer,axis=0)) > 1.57).any():
+        if (np.abs(l_sensor - np.mean(l_buffer,axis=0)) > 0.75).any() or  (np.abs(r_sensor - np.mean(r_buffer,axis=0)) > 0.75).any():
             print('[INFO] Bad Sensor Pose')
             l_sensor = np.mean(l_buffer,axis=0)
             r_sensor = np.mean(r_buffer,axis=0)
@@ -109,11 +110,11 @@ def process_angles(rvec_dict):
 
         # Ensure the rotations are in [-pi, pi]
         for i in range(len(r_vec)):
-            if r_vec[i] > 3.1416:
-                r_vec[i] = r_vec[i]-2*np.pi
+            if np.abs(r_vec[i]) > 3.1416:
+                r_vec[i] = r_vec[i]-np.sign(r_vec[i])*2*np.pi
         for i in range(len(l_vec)):
-            if l_vec[i] > 3.1416:
-                l_vec[i] = l_vec[i]-2*np.pi
+            if np.abs(l_vec[i]) > 3.1416:
+                l_vec[i] = l_vec[i]-np.sign(l_vec[i])*2*np.pi
 
         # Convert to list for json dump
         l_vec = l_vec.tolist()
@@ -125,7 +126,11 @@ def process_angles(rvec_dict):
 
     except KeyError:
         print('[INFO] Marker not found, returning raw rotations')
-        dict = rvec_dict
+        dict = {'left': 0, 'right': 0, 'reference': 0}
+
+    except TypeError:
+        print('[INFO] Marker Obscured, returning raw data')
+        dict = {'left': 0, 'right': 0, 'reference': 0}
 
     return dict
 
@@ -177,14 +182,15 @@ def display_camera(display_name, camera_id, resolution, processing_func, display
         # if data saving is occurring
         if capture.is_set():
             # write the image to the folder
-            cv.imwrite('data/'+ stamp + '/' + display_name + '.png', frame)
+            cv.imwrite(PATH+ stamp + '/' + display_name + '.png', frame)
             if rvec_dict:
                 # dump the rotation data
-                rvec_dict = {}
-                with open('data/'+stamp+'/rvec.json', 'w') as fp:
+                with open(PATH+stamp+'/rvec.json', 'w') as fp:
                     json.dump(rvec_dict, fp)
-                with open('data/'+stamp+'/tvec.json', 'w') as fp:
+                    fp.close()
+                with open(PATH+stamp+'/tvec.json', 'w') as fp:
                     json.dump(tvec_dict, fp)
+                    fp.close()
 
             capture_counter += 1
             time.sleep(3)
@@ -232,12 +238,16 @@ def main():
     global capture_counter
     capture_counter = 0
 
+    object = input('Enter the name of the object being used:')
+    global PATH
+    PATH = 'data/'+object+'/'
+
     # Initialise camera threads
-    sensor1 = camera_thread('Sensor1', 3, (1920,1080), process_sensor_frame, True, res=(240,135), crop = [300, 0, 1600, 1080], threshold = (47, -4))
-    sensor2 = camera_thread('Sensor2', 1, (1920,1080), process_sensor_frame, True, res=(240,135), crop = [300, 0, 1600, 1080], threshold = (59, -6))
+    sensor1 = camera_thread('Sensor2', 3, (1920,1080), process_sensor_frame, True, res=(240,135), crop = [300, 0, 1600, 1080], threshold = (47, -4))
+    sensor2 = camera_thread('Sensor1', 1, (1920,1080), process_sensor_frame, True, res=(240,135), crop = [300, 0, 1600, 1080], threshold = (59, -6))
     external = camera_thread('external', 2, (1920,1080), find_markers, True, cam_mat=cam_mat, dist_mat=dist_mat)
 
-    capture_thread = collection_thread('data')
+    capture_thread = collection_thread('data/'+object+'/')
 
     sensor1.start()
     sensor2.start()
