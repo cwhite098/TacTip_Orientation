@@ -43,7 +43,7 @@ def read_data(shapes, path, combine_shapes=False):
 
 
     # train/test split
-    x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.25)
+    x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.1)
 
     # Scale the angles - is this necessary???
     train_scaler = StandardScaler()
@@ -56,9 +56,12 @@ def read_data(shapes, path, combine_shapes=False):
     print('Training Labels: ', len(y_train))
     print('Testing Examples: ', len(x_test))
     print('Training Labels: ', len(y_test))
-    print('Size of image: ',x_train[1].shape)
+    print('Size of image: ', x_train[1].shape)
 
-    return np.array(x_train), np.array(x_test), np.array(y_train), np.array(y_test)
+    x_train = np.array(x_train).reshape(len(x_train), 270,240,1)
+    x_test = np.array(x_test).reshape(len(x_test), 270,240,1)
+
+    return x_train, x_test, np.array(y_train), np.array(y_test)
 
 
 
@@ -67,6 +70,8 @@ def main():
     shapes = ['cube']
     path = 'C:/Users/chris/OneDrive/Uni/Summer_Research_Internship/Project/TacTip_Orientation/data'
     x_train, x_test, y_train, y_test = read_data(shapes, path, False)
+
+    print(x_train.shape)
 
     model = create_network(270, 240, 4)
 
