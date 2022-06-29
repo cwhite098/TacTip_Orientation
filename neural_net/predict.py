@@ -1,12 +1,12 @@
 from model import create_network
+from plots import plot_angle_distribution
 import os
 import cv2 as cv
 import json
 import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import matplotlib.pyplot as plt
-
 
 
 def read_data(shapes, path, combine_shapes=False):
@@ -41,15 +41,16 @@ def read_data(shapes, path, combine_shapes=False):
                 Y.append(target)
                 X.append(np.vstack((sensor1, sensor2)))
 
-
     # train/test split
     x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.1)
 
     # Scale the angles - is this necessary???
-    train_scaler = StandardScaler()
-    test_scaler = StandardScaler()
-    y_train = train_scaler.fit_transform(y_train)
-    y_test = test_scaler.fit_transform(y_test)
+    train_scaler = MinMaxScaler(feature_range=(0,1))
+    test_scaler = MinMaxScaler(feature_range=(0,1))
+    #y_train_scaled = train_scaler.fit_transform(y_train)
+    #y_test_scaled = test_scaler.fit_transform(y_test)
+    y_train_scaled = y_train
+    y_test_scaled = y_test
 
     # Print info
     print('Training Examples: ', len(x_train))
@@ -61,7 +62,7 @@ def read_data(shapes, path, combine_shapes=False):
     x_train = np.array(x_train).reshape(len(x_train), 270,240,1)
     x_test = np.array(x_test).reshape(len(x_test), 270,240,1)
 
-    return x_train, x_test, np.array(y_train), np.array(y_test)
+    return x_train, x_test, np.array(y_train_scaled), np.array(y_test_scaled), test_scaler
 
 
 
@@ -69,13 +70,13 @@ def main():
 
     shapes = ['cube']
     path = 'C:/Users/chris/OneDrive/Uni/Summer_Research_Internship/Project/TacTip_Orientation/data'
-    x_train, x_test, y_train, y_test = read_data(shapes, path, False)
+    x_train, x_test, y_train, y_test, test_scaler = read_data(shapes, path, False)
 
-    print(x_train.shape)
+    plot_angle_distribution(y_train, y_test)
 
     model = create_network(270, 240, 4)
 
-    history = model.fit(x_train, y_train, epochs=10)
+    history = model.fit(x_train, y_train, epochs=100)
 
     loss, accuracy = model.evaluate(x_test, y_test)
 
