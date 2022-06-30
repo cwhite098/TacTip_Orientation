@@ -9,7 +9,7 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import matplotlib.pyplot as plt
 
 
-def read_data(shapes, path, combine_shapes=False):
+def read_data(shapes, path, combine_shapes=False, scale_data=False):
     '''
     Function that reads the data that has been collected for the different shapes
     Carries out a train/test split to be used to train NN.
@@ -40,17 +40,21 @@ def read_data(shapes, path, combine_shapes=False):
                 target = np.array([sensor1_rot[1], sensor1_rot[2], sensor2_rot[1], sensor2_rot[2]])
                 Y.append(target)
                 X.append(np.vstack((sensor1, sensor2)))
+                del sensor1, sensor2
 
     # train/test split
-    x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.1)
+    x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.25)
+    del X, Y
 
     # Scale the angles - is this necessary???
-    train_scaler = MinMaxScaler(feature_range=(0,1))
-    test_scaler = MinMaxScaler(feature_range=(0,1))
-    #y_train_scaled = train_scaler.fit_transform(y_train)
-    #y_test_scaled = test_scaler.fit_transform(y_test)
-    y_train_scaled = y_train
-    y_test_scaled = y_test
+    train_scaler = StandardScaler()
+    test_scaler = StandardScaler()
+    if scale_data:
+        y_train_scaled = train_scaler.fit_transform(y_train)
+        y_test_scaled = test_scaler.fit_transform(y_test)
+    else:
+        y_train_scaled = y_train
+        y_test_scaled = y_test
 
     # Print info
     print('Training Examples: ', len(x_train))
@@ -59,6 +63,7 @@ def read_data(shapes, path, combine_shapes=False):
     print('Training Labels: ', len(y_test))
     print('Size of image: ', x_train[1].shape)
 
+    # Reshape for insertion into network
     x_train = np.array(x_train).reshape(len(x_train), 270,240,1)
     x_test = np.array(x_test).reshape(len(x_test), 270,240,1)
 
@@ -70,17 +75,24 @@ def main():
 
     shapes = ['cube']
     path = 'C:/Users/chris/OneDrive/Uni/Summer_Research_Internship/Project/TacTip_Orientation/data'
-    x_train, x_test, y_train, y_test, test_scaler = read_data(shapes, path, False)
+    
+    scale = False
+    x_train, x_test, y_train, y_test, test_scaler = read_data(shapes, path, 
+                                                        combine_shapes = True,
+                                                        scale_data = scale)
 
     plot_angle_distribution(y_train, y_test)
 
-    model = create_network(270, 240, 4)
+    model = create_network(270, 240, 4) # create the NN
+    model.summary()
+    history = model.fit(x_train, y_train, epochs=150, batch_size=16) # train the NN
+    loss, accuracy = model.evaluate(x_test, y_test) # evaluate the NN
 
-    history = model.fit(x_train, y_train, epochs=100)
+    if scale:
+        loss_unscaled = test_scaler.inverse_transform(np.array([loss,loss,loss,loss]))
+        print(loss_unscaled)
 
-    loss, accuracy = model.evaluate(x_test, y_test)
-
-    plt.plot(history.history['loss'][1:])
+    plt.plot(history.history['loss'])
     plt.title('Loss Curve'), plt.show()
 
     plt.plot(history.history['accuracy'])
