@@ -32,6 +32,11 @@ def read_data(shapes, path, option, val, combine_shapes=False, scale_data=False)
     '''
     Function that reads the data that has been collected for the different shapes
     Carries out a train/test split to be used to train NN.
+
+    option : str
+        Can be 'left' or 'right' for individual sensors.
+        Can be 'dual' for one net with both sensors being input.
+        Can be 'combined' for stacked images -> 4 angles.
     '''
 
     X = []
@@ -134,24 +139,26 @@ def main():
                                                         val = val, 
                                                         combine_shapes = True,
                                                         scale_data = scale)
+
     plot_angle_distribution(y_train, y_test, sensor, y_val=y_val)
 
-    CNN = PoseNet()
+    CNN = PoseNet(  option = sensor,
+                    conv_activation = 'elu',
+                    dropout_rate = 0.001,
+                    l1_rate = 0.001,
+                    l2_rate = 0.064 )
+
     CNN.create_network(x_train[0].shape[0], 240, y_train.shape[1]) # create the NN
     CNN.summary()
-    CNN.fit(x_train, y_train, epochs=150, batch_size=16, x_val=x_val, y_val=y_val) # train the NN
+    CNN.fit(x_train, y_train, epochs=200, batch_size=16, x_val=x_val, y_val=y_val) # train the NN
     CNN.evaluate(x_test, y_test) # evaluate the NN
+    CNN.save_network()
+    CNN.plot_learning_curves()
 
     loss = CNN.loss
     if scale:
         loss_unscaled = test_scaler.inverse_transform(np.array([loss,loss,loss,loss]))
         print(loss_unscaled)
-
-    plt.plot(CNN.history.history['loss'])
-    plt.title('Loss Curve'), plt.show()
-
-    plt.plot(CNN.history.history['accuracy'])
-    plt.title('Accuracy Curve'), plt.show()
 
     return 0
 
