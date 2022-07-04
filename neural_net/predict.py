@@ -1,4 +1,4 @@
-from model import create_network
+from model import PoseNet
 from plots import plot_angle_distribution
 import os
 import cv2 as cv
@@ -9,7 +9,26 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import matplotlib.pyplot as plt
 
 
-def read_data(shapes, path, combine_shapes=False, scale_data=False):
+
+def train_test_val_split(X, Y):
+
+    train_ratio = 0.75
+    validation_ratio = 0.15
+    test_ratio = 0.10
+
+    # train is now 75% of the entire data set
+    # the _junk suffix means that we drop that variable completely
+    x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=1 - train_ratio)
+
+    # test is now 10% of the initial data set
+    # validation is now 15% of the initial data set
+    x_val, x_test, y_val, y_test = train_test_split(x_test, y_test, test_size=test_ratio/(test_ratio + validation_ratio)) 
+
+    return x_train, x_test, x_val, y_train, y_test, y_val
+
+
+
+def read_data(shapes, path, option, val, combine_shapes=False, scale_data=False):
     '''
     Function that reads the data that has been collected for the different shapes
     Carries out a train/test split to be used to train NN.
@@ -38,64 +57,100 @@ def read_data(shapes, path, combine_shapes=False, scale_data=False):
                 print('ZERO ROTATION FOUND: '+example)
             else:
                 target = np.array([sensor1_rot[1], sensor1_rot[2], sensor2_rot[1], sensor2_rot[2]])
+
+                if option == 'combined':
+                    X.append(np.vstack((sensor1, sensor2)))
+                    target = np.array([sensor1_rot[1], sensor1_rot[2], sensor2_rot[1], sensor2_rot[2]])
+                elif option == 'left':
+                    X.append(sensor1)
+                    target = np.array([sensor1_rot[1], sensor1_rot[2]])
+                elif option == 'right':
+                    X.append(sensor2)
+                    target = np.array([sensor2_rot[1], sensor2_rot[2]])
+                elif option == 'dual':
+                    X.append(sensor1)
+                    X.append(sensor2)
+                    target = np.array([sensor1_rot[1], sensor1_rot[2]])
+                    target = np.array([sensor2_rot[1], sensor2_rot[2]])
+
                 Y.append(target)
-                X.append(np.vstack((sensor1, sensor2)))
                 del sensor1, sensor2
 
     # train/test split
-    x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.25)
-    del X, Y
+    if not val:
+        x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.25)
+        y_val = None
+        x_val = None
+        del X, Y
+    else:
+        x_train, x_test, x_val, y_train, y_test, y_val = train_test_val_split(X, Y)
 
     # Scale the angles - is this necessary???
     train_scaler = StandardScaler()
     test_scaler = StandardScaler()
+    val_scaler = StandardScaler()
     if scale_data:
         y_train_scaled = train_scaler.fit_transform(y_train)
         y_test_scaled = test_scaler.fit_transform(y_test)
+        if y_val:
+            y_val_scaled = val_scaler.fit_transform(y_val)
     else:
         y_train_scaled = y_train
         y_test_scaled = y_test
+        y_val_scaled = y_val
 
     # Print info
     print('Training Examples: ', len(x_train))
     print('Training Labels: ', len(y_train))
     print('Testing Examples: ', len(x_test))
-    print('Training Labels: ', len(y_test))
+    print('Testing Labels: ', len(y_test))
+    if val:
+        print('Validation Examples: ', len(x_val))
+        print('Validation Labels: ', len(y_val))
     print('Size of image: ', x_train[1].shape)
 
     # Reshape for insertion into network
-    x_train = np.array(x_train).reshape(len(x_train), 270,240,1)
-    x_test = np.array(x_test).reshape(len(x_test), 270,240,1)
-
-    return x_train, x_test, np.array(y_train_scaled), np.array(y_test_scaled), test_scaler
+    x_train = np.array(x_train).reshape(len(x_train), x_train[0].shape[0],240,1)
+    x_test = np.array(x_test).reshape(len(x_test), x_train[0].shape[0],240,1)
+    if val:
+        x_val = np.array(x_val).reshape(len(x_val), x_train[0].shape[0],240,1)
+        return x_train, x_test, x_val, np.array(y_train_scaled), np.array(y_test_scaled), np.array(y_val_scaled), test_scaler
+    else:
+        return x_train, x_test, None, np.array(y_train_scaled), np.array(y_test_scaled), None, test_scaler
 
 
 
 def main():
 
-    shapes = ['cube']
+    shapes = ['cube', 'cylinder']
     path = 'C:/Users/chris/OneDrive/Uni/Summer_Research_Internship/Project/TacTip_Orientation/data'
     
     scale = False
-    x_train, x_test, y_train, y_test, test_scaler = read_data(shapes, path, 
+    val = True
+    sensor = 'left'
+
+    x_train, x_test, x_val, y_train, y_test, y_val, test_scaler = read_data(shapes, path,
+                                                        option = sensor,
+                                                        val = val, 
                                                         combine_shapes = True,
                                                         scale_data = scale)
+    plot_angle_distribution(y_train, y_test, sensor, y_val=y_val)
 
-    plot_angle_distribution(y_train, y_test)
+    CNN = PoseNet()
+    CNN.create_network(x_train[0].shape[0], 240, y_train.shape[1]) # create the NN
+    CNN.summary()
+    CNN.fit(x_train, y_train, epochs=150, batch_size=16, x_val=x_val, y_val=y_val) # train the NN
+    CNN.evaluate(x_test, y_test) # evaluate the NN
 
-    model = create_network(270, 240, 4) # create the NN
-    model.summary()
-    history = model.fit(x_train, y_train, epochs=150, batch_size=16) # train the NN
-    loss, accuracy = model.evaluate(x_test, y_test) # evaluate the NN
-
+    loss = CNN.loss
     if scale:
         loss_unscaled = test_scaler.inverse_transform(np.array([loss,loss,loss,loss]))
         print(loss_unscaled)
 
-    plt.plot(history.history['loss'])
+    plt.plot(CNN.history.history['loss'])
     plt.title('Loss Curve'), plt.show()
 
-    plt.plot(history.history['accuracy'])
+    plt.plot(CNN.history.history['accuracy'])
     plt.title('Accuracy Curve'), plt.show()
 
     return 0
