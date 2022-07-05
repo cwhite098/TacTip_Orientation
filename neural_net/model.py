@@ -22,6 +22,7 @@ class PoseNet():
         self.l1_rate = l1_rate
         self.l2_rate = l2_rate
 
+
     def create_network(self, input_height, input_width, num_outputs):
         '''
         Create the CNN model.
@@ -126,6 +127,7 @@ class PoseNet():
         '''
         self.model.summary()
 
+
     def plot_learning_curves(self):
         '''
         Plot the loss and the validation loss
@@ -133,6 +135,7 @@ class PoseNet():
         plt.plot(self.history.history['loss'], label='Loss')
         plt.plot(self.history.history['val_loss'], label= 'Val Loss')
         plt.legend(), plt.title('Loss Curve'), plt.show()
+
 
     def save_network(self):
         '''

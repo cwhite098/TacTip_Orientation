@@ -66,19 +66,24 @@ def read_data(shapes, path, option, val, combine_shapes=False, scale_data=False)
                 if option == 'combined':
                     X.append(np.vstack((sensor1, sensor2)))
                     target = np.array([sensor1_rot[1], sensor1_rot[2], sensor2_rot[1], sensor2_rot[2]])
+                    Y.append(target)
                 elif option == 'left':
                     X.append(sensor1)
                     target = np.array([sensor1_rot[1], sensor1_rot[2]])
+                    Y.append(target)
                 elif option == 'right':
                     X.append(sensor2)
                     target = np.array([sensor2_rot[1], sensor2_rot[2]])
+                    Y.append(target)
                 elif option == 'dual':
                     X.append(sensor1)
                     X.append(sensor2)
                     target = np.array([sensor1_rot[1], sensor1_rot[2]])
+                    Y.append(target)
                     target = np.array([sensor2_rot[1], sensor2_rot[2]])
+                    Y.append(target)
 
-                Y.append(target)
+                
                 del sensor1, sensor2
 
     # train/test split
@@ -132,7 +137,7 @@ def main():
     
     scale = False
     val = True
-    sensor = 'left'
+    sensor = 'combined'
 
     x_train, x_test, x_val, y_train, y_test, y_val, test_scaler = read_data(shapes, path,
                                                         option = sensor,

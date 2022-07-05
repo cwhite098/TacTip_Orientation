@@ -5,7 +5,7 @@ import numpy as np
 def plot_angle_distribution(y_train, y_test, sensor, y_val=None):
 
 
-    if sensor == 'combined' or sensor == 'dual':
+    if sensor == 'combined':
 
         plt.subplot(1,2,1)
         plt.scatter(y_train[:,0], y_train[:,1], label='Train')
@@ -28,7 +28,7 @@ def plot_angle_distribution(y_train, y_test, sensor, y_val=None):
         plt.scatter(y_test[:,0], y_test[:,1], label='Test')
         if isinstance(y_val, np.ndarray):
             plt.scatter(y_val[:,0], y_val[:,1], label='Val')
-        plt.legend(), plt.xlabel('Psi1'), plt.ylabel('Phi1')
+        plt.legend(), plt.xlabel('Psi'), plt.ylabel('Phi')
         plt.title(sensor + ' Sensor Angles')
 
     plt.show()
