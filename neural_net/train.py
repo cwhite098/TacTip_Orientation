@@ -54,36 +54,43 @@ def read_data(shapes, path, option, val, combine_shapes=False, scale_data=False)
             # Read the orientation data
             with open(path+'/'+s+'/'+example+'/rvec.json', 'r') as f:
                 rvec_dict = json.load(f)
-            sensor1_rot = rvec_dict['left']
-            sensor2_rot = rvec_dict['right']
 
-            # Check if the data is good and if so, save.
-            if isinstance(sensor1_rot, int) & isinstance(sensor2_rot, int):
-                print('ZERO ROTATION FOUND: '+example)
-            else:
-                target = np.array([sensor1_rot[1], sensor1_rot[2], sensor2_rot[1], sensor2_rot[2]])
-
-                if option == 'combined':
+            if option == 'object':
+                object_rot = rvec_dict['object']
+                # Check if the data is good and if so, save.
+                if isinstance(object_rot, int):
+                    print('ZERO ROTATION FOUND: '+example)
+                else:
                     X.append(np.vstack((sensor1, sensor2)))
-                    target = np.array([sensor1_rot[1], sensor1_rot[2], sensor2_rot[1], sensor2_rot[2]])
+                    target = np.array(object_rot)
                     Y.append(target)
-                elif option == 'left':
-                    X.append(sensor1)
-                    target = np.array([sensor1_rot[1], sensor1_rot[2]])
-                    Y.append(target)
-                elif option == 'right':
-                    X.append(sensor2)
-                    target = np.array([sensor2_rot[1], sensor2_rot[2]])
-                    Y.append(target)
-                elif option == 'dual':
-                    X.append(sensor1)
-                    X.append(sensor2)
-                    target = np.array([sensor1_rot[1], sensor1_rot[2]])
-                    Y.append(target)
-                    target = np.array([sensor2_rot[1], sensor2_rot[2]])
-                    Y.append(target)
-
-                
+            
+            else:
+                sensor1_rot = rvec_dict['left']
+                sensor2_rot = rvec_dict['right']
+                # Check if the data is good and if so, save.
+                if isinstance(sensor1_rot, int) & isinstance(sensor2_rot, int):
+                    print('ZERO ROTATION FOUND: '+example)
+                else:
+                    if option == 'combined':
+                        X.append(np.vstack((sensor1, sensor2)))
+                        target = np.array([sensor1_rot[1], sensor1_rot[2], sensor2_rot[1], sensor2_rot[2]])
+                        Y.append(target)
+                    elif option == 'left':
+                        X.append(sensor1)
+                        target = np.array([sensor1_rot[1], sensor1_rot[2]])
+                        Y.append(target)
+                    elif option == 'right':
+                        X.append(sensor2)
+                        target = np.array([sensor2_rot[1], sensor2_rot[2]])
+                        Y.append(target)
+                    elif option == 'dual':
+                        X.append(sensor1)
+                        X.append(sensor2)
+                        target = np.array([sensor1_rot[1], sensor1_rot[2]])
+                        Y.append(target)
+                        target = np.array([sensor2_rot[1], sensor2_rot[2]])
+                        Y.append(target)
                 del sensor1, sensor2
 
     # train/test split
@@ -132,12 +139,13 @@ def read_data(shapes, path, option, val, combine_shapes=False, scale_data=False)
 
 def main():
 
-    shapes = ['cube', 'cylinder']
+    shapes = ['cube','cylinder']
+    shapes = ['pose_cube']
     path = 'C:/Users/chris/OneDrive/Uni/Summer_Research_Internship/Project/TacTip_Orientation/data'
     
     scale = False
     val = True
-    sensor = 'combined'
+    sensor = 'object'
 
     x_train, x_test, x_val, y_train, y_test, y_val, test_scaler = read_data(shapes, path,
                                                         option = sensor,
@@ -157,7 +165,7 @@ def main():
     CNN.summary()
     CNN.fit(x_train, y_train, epochs=200, batch_size=16, x_val=x_val, y_val=y_val) # train the NN
     CNN.evaluate(x_test, y_test) # evaluate the NN
-    CNN.save_network()
+    CNN.save_network(shapes)
     CNN.plot_learning_curves()
 
     loss = CNN.loss
