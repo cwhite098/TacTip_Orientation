@@ -1,3 +1,4 @@
+from distutils.log import error
 from importlib.resources import path
 from pickle import READONLY_BUFFER
 import cv2 as cv
@@ -43,6 +44,7 @@ class collection_thread(threading.Thread):
         print('Press s to save snapshot')
         keyboard.add_hotkey('s', self.save_key)
         keyboard.add_hotkey('x', self.exit_key)
+        keyboard.add_hotkey('e', self.pose_error)
         keyboard.wait()
     
     def exit_key(self):
@@ -50,6 +52,27 @@ class collection_thread(threading.Thread):
         keyboard.press('x')
         print('[INFO] Closing Data Collection')
         os._exit(1)
+
+    def pose_error(self):
+        keyboard.press('e')
+        print('[INFO] Collecting measurements for precision analysis')
+        error.set()
+        time.sleep(10)
+        global error_buffer
+        error_array = np.array(error_buffer)
+        psi1 = np.ptp(error_array[:,0,0])
+        phi1 = np.ptp(error_array[:,0,1])
+        psi2 = np.ptp(error_array[:,1,0])
+        phi2 = np.ptp(error_array[:,1,1])
+        print('Ranges: \n', 
+                'Psi1: ', psi1,'\n',
+                'Phi1: ', phi1,'\n',
+                'Psi2: ', psi2,'\n',
+                'Phi2: ', phi2)
+        time.sleep(3)
+        error_buffer = []
+        error.clear()
+
 
     def save_key(self):
         # Button press that saves a snap shot of the system
@@ -75,64 +98,98 @@ def process_angles(rvec_dict):
     Function that processes the raw angle data.
     Makes the sensor rotations relative to some other marker
     '''
-    try:
-        reference1 = rvec_dict['1']
-        reference2 = rvec_dict['2']
-        l_sensor = rvec_dict['4']
-        r_sensor = rvec_dict['3']
+    buffer_size = 10
 
-        # Get the average of the 2 reference markers
-        reference = (reference1+reference2)/2
+    if mode == 's':
+        try: # get markers for sensor tracking mode
+            reference1 = rvec_dict['1']
+            reference2 = rvec_dict['2']
+            l_sensor = rvec_dict['4']
+            r_sensor = rvec_dict['3']
 
-        # If the 2 reference markers vary dramatically, there is an error, return 0s
-        if (np.abs(reference1 - reference2) > 0.5).any():
-            print('[INFO] Bad Reference Pose')
+        except KeyError:
+            print('[INFO] Marker not found, returning raw rotations')
             dict = {'left': 0, 'right': 0, 'reference': 0}
             return dict
+        except TypeError:
+            print('[INFO] Marker Obscured, returning raw data')
+            dict = {'left': 0, 'right': 0, 'reference': 0}
+            return dict
+        
+        dict = get_relative_rotations(  [reference1, reference2], [l_sensor, r_sensor], ['left', 'right'],
+                                        [l_buffer, r_buffer], buffer_size)
 
-        # If the sensors have moved too far in the last 5 frames,
-        # set the rotations to the averages of those frames
-        if (np.abs(l_sensor - np.mean(l_buffer,axis=0)) > 0.75).any() or  (np.abs(r_sensor - np.mean(r_buffer,axis=0)) > 0.75).any():
+        
+    if mode == 'o':
+        try: # get markers for object tracking mode
+            reference1 = rvec_dict['1']
+            reference2 = rvec_dict['2']
+            object1 = rvec_dict['6']
+
+        except KeyError:
+            print('[INFO] Marker not found, returning raw rotations')
+            dict = {'object': 0, 'reference': 0}
+            return dict
+        except TypeError:
+            print('[INFO] Marker Obscured, returning raw data')
+            dict = {'object': 0, 'reference': 0}
+            return dict
+
+        dict = get_relative_rotations(  [reference1, reference2], [object1], ['object'],
+                                        [object_buffer], buffer_size)
+
+    print(dict)
+    return dict
+
+
+
+def get_relative_rotations(refs, markers, names, buffers, buffer_size):
+
+    output_rots = []
+
+    # Get the average of the 2 reference markers
+    reference = (refs[0]+refs[1])/2
+
+    # If the 2 reference markers vary dramatically, there is an error, return 0s
+    if (np.abs(refs[0] - refs[1]) > 0.5).any():
+        print('[INFO] Bad Reference Pose')
+        dict = {'left': 0, 'right': 0, 'reference': 0}
+        return dict
+
+    # If the sensors have moved too far in the last 5 frames,
+    # set the rotations to the averages of those frames
+    for i in range(len(markers)):
+        if (np.abs(markers[i] - np.mean(buffers[i],axis=0)) > 0.75).any():
             print('[INFO] Bad Sensor Pose')
-            l_sensor = np.mean(l_buffer,axis=0)
-            r_sensor = np.mean(r_buffer,axis=0)
+            markers[i] = np.mean(buffers[i], axis=0)
         else:
-            l_buffer.append(l_sensor)
-            r_buffer.append(r_sensor)
+            buffers[i].append(markers[i])
+            # Check buffer size and remove entry if necessary
+            if len(buffers[i])>buffer_size:
+                buffers[i].pop(0)
 
-            if len(l_buffer)>5:
-                l_buffer.pop(0)
-            if len(r_buffer)>5:
-                r_buffer.pop(0)
+        output_rots.append(np.mean(buffers[i],axis=0) - reference) # get the relative rotations
+        
+    # Ensure the rotations are in [-pi, pi]
+    for i, output in enumerate(output_rots):
+        if np.abs(output[i]) > 3.1416:
+            output[i] = output[i]-np.sign(output[i])*2*np.pi
+        # convert to list for json dump
+        output_rots[i] = output.tolist()
+    
+    # Convert reference
+    reference = reference.tolist()
 
-        l_vec = np.mean(l_buffer,axis=0) - reference # get the relative rotations
-        r_vec = np.mean(r_buffer,axis=0) - reference # use the average to get more reliable data
+    # Collect outputs into dictionary
+    dict = {}
+    for i, output in enumerate(output_rots):
+        dict[names[i]] = output
+    dict['reference'] = reference
 
-        # Ensure the rotations are in [-pi, pi]
-        for i in range(len(r_vec)):
-            if np.abs(r_vec[i]) > 3.1416:
-                r_vec[i] = r_vec[i]-np.sign(r_vec[i])*2*np.pi
-        for i in range(len(l_vec)):
-            if np.abs(l_vec[i]) > 3.1416:
-                l_vec[i] = l_vec[i]-np.sign(l_vec[i])*2*np.pi
-
-        # Convert to list for json dump
-        l_vec = l_vec.tolist()
-        r_vec = r_vec.tolist()
-        reference = reference.tolist()
-
-        dict = {'left': l_vec, 'right': r_vec, 'reference': reference}
-        print(dict['left'], dict['right'])
-
-    except KeyError:
-        print('[INFO] Marker not found, returning raw rotations')
-        dict = {'left': 0, 'right': 0, 'reference': 0}
-
-    except TypeError:
-        print('[INFO] Marker Obscured, returning raw data')
-        dict = {'left': 0, 'right': 0, 'reference': 0}
+    # Missing the printing of the angles during data collection
 
     return dict
+
 
 
 def display_camera(display_name, camera_id, resolution, processing_func, display_bool=True, **process_args):
@@ -147,6 +204,10 @@ def display_camera(display_name, camera_id, resolution, processing_func, display
     r_buffer = []
     global l_buffer
     l_buffer = []
+    global error_buffer
+    error_buffer = []
+    global object_buffer
+    object_buffer = []
 
     cam = cv.VideoCapture(camera_id, cv.CAP_DSHOW)
     #cam.set(cv.CAP_PROP_FRAME_WIDTH, resolution[0]) # set horizontal res
@@ -195,6 +256,13 @@ def display_camera(display_name, camera_id, resolution, processing_func, display
             capture_counter += 1
             time.sleep(3)
 
+        if error.is_set():
+            # Collect some readings to find the error in the pose
+            # estimation
+            if rvec_dict:
+                error_buffer.append([rvec_dict['left'][1:], rvec_dict['right'][1:]])
+
+
         key = cv.waitKey(20)
         if key == 27:
             print('[INFO] Closing thread: ' + display_name)
@@ -237,14 +305,18 @@ def main():
     capture = Event()
     global capture_counter
     capture_counter = 0
+    global error
+    error = Event()
 
     object = input('Enter the name of the object being used:')
+    global mode
+    mode = input('Collecting data for sensor pose (s) or object pose (o):')
     global PATH
     PATH = 'data/'+object+'/'
 
     # Initialise camera threads
-    sensor1 = camera_thread('Sensor2', 3, (1920,1080), process_sensor_frame, True, res=(240,135), crop = [300, 0, 1600, 1080], threshold = (47, -4))
-    sensor2 = camera_thread('Sensor1', 1, (1920,1080), process_sensor_frame, True, res=(240,135), crop = [300, 0, 1600, 1080], threshold = (59, -6))
+    sensor1 = camera_thread('Sensor1', 3, (1920,1080), process_sensor_frame, True, res=(240,135), crop = [300, 0, 1600, 1080], threshold = (47, -4))
+    sensor2 = camera_thread('Sensor2', 1, (1920,1080), process_sensor_frame, True, res=(240,135), crop = [300, 0, 1600, 1080], threshold = (59, -6))
     external = camera_thread('external', 2, (1920,1080), find_markers, True, cam_mat=cam_mat, dist_mat=dist_mat)
 
     capture_thread = collection_thread('data/'+object+'/')
