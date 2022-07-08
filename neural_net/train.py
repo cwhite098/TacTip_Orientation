@@ -1,6 +1,7 @@
 from model import PoseNet
-from plots import plot_angle_distribution
+import plots as p
 import os
+import shutil
 import cv2 as cv
 import json
 import numpy as np
@@ -56,10 +57,16 @@ def read_data(shapes, path, option, val, combine_shapes=False, scale_data=False)
                 rvec_dict = json.load(f)
 
             if option == 'object':
-                object_rot = rvec_dict['object']
+                try:
+                    object_rot = rvec_dict['object']
+                except KeyError:
+                    print('Zero Rotation Found: '+example)
+                    #shutil.rmtree(path+'/'+s+'/'+example)
+                    object_rot = 0
                 # Check if the data is good and if so, save.
                 if isinstance(object_rot, int):
                     print('ZERO ROTATION FOUND: '+example)
+                    shutil.rmtree(path+'/'+s+'/'+example)
                 else:
                     X.append(np.vstack((sensor1, sensor2)))
                     target = np.array(object_rot)
@@ -125,6 +132,7 @@ def read_data(shapes, path, option, val, combine_shapes=False, scale_data=False)
         print('Validation Examples: ', len(x_val))
         print('Validation Labels: ', len(y_val))
     print('Size of image: ', x_train[1].shape)
+    print('Shape of Targets: ', y_test[0].shape)
 
     # Reshape for insertion into network
     x_train = np.array(x_train).reshape(len(x_train), x_train[0].shape[0],240,1)
@@ -153,7 +161,7 @@ def main():
                                                         combine_shapes = True,
                                                         scale_data = scale)
 
-    plot_angle_distribution(y_train, y_test, sensor, y_val=y_val)
+    p.plot_angle_distribution(y_train, y_test, sensor, y_val=y_val)
 
     CNN = PoseNet(  option = sensor,
                     conv_activation = 'elu',
@@ -163,7 +171,7 @@ def main():
 
     CNN.create_network(x_train[0].shape[0], 240, y_train.shape[1]) # create the NN
     CNN.summary()
-    CNN.fit(x_train, y_train, epochs=200, batch_size=16, x_val=x_val, y_val=y_val) # train the NN
+    CNN.fit(x_train, y_train, epochs=500, batch_size=16, x_val=x_val, y_val=y_val) # train the NN
     CNN.evaluate(x_test, y_test) # evaluate the NN
     CNN.save_network(shapes)
     CNN.plot_learning_curves()

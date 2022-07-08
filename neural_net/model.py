@@ -4,8 +4,16 @@ from tensorflow.keras.layers import Dense, Conv2D, MaxPooling2D, Flatten, Dropou
 from tensorflow.keras.optimizers import SGD, Adam
 import tensorflow.keras.regularizers as regularizers
 from tensorflow.keras.callbacks import EarlyStopping
+import tensorflow as tf
 import json
 import matplotlib.pyplot as plt
+import time
+
+# Enable GPU dynamic memory allocation
+gpus = tf.config.experimental.list_physical_devices('GPU')
+print('GPUs found: ', gpus)
+for gpu in gpus:
+    tf.config.experimental.set_memory_growth(gpu, True)
 
 
 class PoseNet():
@@ -42,7 +50,7 @@ class PoseNet():
         self.model.add(MaxPooling2D(pool_size=(2,2), strides=(2,2)))
 
         # 3rd convolution
-        self.model.add(Conv2D(filters=256, kernel_size=(3,3), padding='same'))
+        self.model.add(Conv2D(filters=512, kernel_size=(3,3), padding='same'))
         self.model.add(BatchNormalization())
         self.model.add(Activation(self.conv_activation))
         self.model.add(MaxPooling2D(pool_size=(2,2), strides=(2,2)))
@@ -73,8 +81,9 @@ class PoseNet():
         self.model.add(Dense(num_outputs, activation='linear', 
                     kernel_regularizer=regularizers.L1L2(l1=self.l1_rate, l2=self.l2_rate)))
 
-        self.model.compile(loss='mean_absolute_error', 
-                        optimizer=Adam(learning_rate=0.0001), metrics=['accuracy'])
+        self.model.compile(loss='mse', 
+                        optimizer=Adam(learning_rate=0.0001, decay = 0.000001), 
+                        metrics=['mae', 'mse'])
     
 
     def fit(self, x_train, y_train, epochs, batch_size, 
@@ -116,8 +125,8 @@ class PoseNet():
         self.y_test = y_test
 
         # Evaluate the network
-        self.loss, accuracy = self.model.evaluate(x_test, y_test)
-        print('Evaluation Loss: ', self.loss)
+        self.loss, self.mae, self.mse = self.model.evaluate(x_test, y_test)
+        print('Evaluation MAE: ', self.mae)
 
 
     def summary(self):
@@ -136,7 +145,7 @@ class PoseNet():
         plt.legend(), plt.title('Loss Curve'), plt.show()
 
 
-    def save_network(self):
+    def save_network(self, shapes):
         '''
         Save the network and a JSON of parameters.
         '''
@@ -149,13 +158,20 @@ class PoseNet():
             'conv activation': self.conv_activation,
             'dropout rate': self.dropout_rate,
             'l1 rate': self.l1_rate,
-            'l2 rate': self.l2_rate
+            'l2 rate': self.l2_rate,
+            'Shapes used': shapes
         }
         if self.loss:
+            param_dict['MAE'] = self.mae
             param_dict['loss'] = self.loss
+            param_dict['MSE'] = self.mse
 
-        self.model.save('saved_nets/'+self.option+'/CNN.h5')
-        with open('saved_nets/'+self.option+'/params.json', 'w') as fp:
+        stamp = str(time.ctime())
+        stamp=stamp.replace(' ', '_')
+        stamp=stamp.replace(':', '-')
+
+        self.model.save('saved_nets/'+self.option+'_'+stamp+'/CNN.h5')
+        with open('saved_nets/'+self.option+'_'+stamp+'/params.json', 'w') as fp:
             json.dump(param_dict, fp)
             fp.close()
 
