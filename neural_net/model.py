@@ -18,7 +18,8 @@ for gpu in gpus:
 
 class PoseNet():
     def __init__(self, option, conv_activation, dropout_rate,
-                    l1_rate, l2_rate):
+                    l1_rate, l2_rate, learning_rate, decay_rate, dense_width, loss_func,
+                    batch_bool = True, N_convs=4, N_filters=512):
         self.model = None
         self.history = None
 
@@ -28,6 +29,13 @@ class PoseNet():
         self.dropout_rate = dropout_rate
         self.l1_rate = l1_rate
         self.l2_rate = l2_rate
+        self.dense_width = dense_width
+        self.learning_rate = learning_rate
+        self.decay_rate = decay_rate
+        self.loss_func = loss_func
+        self.batch_bool = batch_bool
+        self.N_convs = N_convs
+        self.N_filters = N_filters
 
 
     def create_network(self, input_height, input_width, num_outputs):
@@ -39,33 +47,18 @@ class PoseNet():
         # 1st convolution
         self.model.add(Conv2D(filters=128, kernel_size=(3,3), padding='same',
                         input_shape=(input_height, input_width, 1)))
-        self.model.add(BatchNormalization())
+        if self.batch_bool:
+            self.model.add(BatchNormalization())
         self.model.add(Activation(self.conv_activation))
         self.model.add(MaxPooling2D(pool_size=(2,2), strides=(2,2)))
 
         # 2nd convolution
-        self.model.add(Conv2D(filters=256, kernel_size=(3,3), padding='same'))
-        self.model.add(BatchNormalization())
-        self.model.add(Activation(self.conv_activation))
-        self.model.add(MaxPooling2D(pool_size=(2,2), strides=(2,2)))
-
-        # 3rd convolution
-        self.model.add(Conv2D(filters=512, kernel_size=(3,3), padding='same'))
-        self.model.add(BatchNormalization())
-        self.model.add(Activation(self.conv_activation))
-        self.model.add(MaxPooling2D(pool_size=(2,2), strides=(2,2)))
-        
-        # 4th convolution
-        self.model.add(Conv2D(filters=512, kernel_size=(3,3), padding='same'))
-        self.model.add(BatchNormalization())
-        self.model.add(Activation(self.conv_activation))
-        self.model.add(MaxPooling2D(pool_size=(2,2), strides=(2,2)))
-
-        # 5th convolution
-        self.model.add(Conv2D(filters=512, kernel_size=(3,3), padding='same'))
-        self.model.add(BatchNormalization())
-        self.model.add(Activation(self.conv_activation))
-        self.model.add(MaxPooling2D(pool_size=(2,2), strides=(2,2)))
+        for i in range(self.N_convs):
+            self.model.add(Conv2D(filters=512, kernel_size=(3,3), padding='same'))
+            if self.batch_bool:
+                self.model.add(BatchNormalization())
+            self.model.add(Activation(self.conv_activation))
+            self.model.add(MaxPooling2D(pool_size=(2,2), strides=(2,2)))
 
         # Flatten the convolved images
         self.model.add(Flatten())
@@ -73,7 +66,7 @@ class PoseNet():
         #model.add(Dense(256, activation='relu'))
         #model.add(Dense(128, activation='relu'))
         self.model.add(Dropout(rate=self.dropout_rate))
-        self.model.add(Dense(16, activation='relu', 
+        self.model.add(Dense(self.dense_width, activation='relu', 
                         kernel_regularizer=regularizers.L1L2(l1=self.l1_rate, l2=self.l2_rate)))
 
         # Output Layer
@@ -81,8 +74,8 @@ class PoseNet():
         self.model.add(Dense(num_outputs, activation='linear', 
                     kernel_regularizer=regularizers.L1L2(l1=self.l1_rate, l2=self.l2_rate)))
 
-        self.model.compile(loss='mse', 
-                        optimizer=Adam(learning_rate=0.0001, decay = 0.000001), 
+        self.model.compile(loss=self.loss_func, 
+                        optimizer=Adam(learning_rate=self.learning_rate, decay = self.decay_rate), 
                         metrics=['mae', 'mse'])
     
 
@@ -145,7 +138,7 @@ class PoseNet():
         plt.legend(), plt.title('Loss Curve'), plt.show()
 
 
-    def save_network(self, shapes):
+    def save_network(self, shapes, outliers_removed, data_scaled):
         '''
         Save the network and a JSON of parameters.
         '''
@@ -159,8 +152,15 @@ class PoseNet():
             'dropout rate': self.dropout_rate,
             'l1 rate': self.l1_rate,
             'l2 rate': self.l2_rate,
-            'Shapes used': shapes
+            'Dense width': self.dense_width,            
+            'learning rate': self.learning_rate,
+            'decay rate': self.decay_rate,
+            'loss function': self.loss_func,
+            'Shapes used': shapes,
+            'Outliers removed?': outliers_removed,
+            'Data scaled?': data_scaled
         }
+
         if self.loss:
             param_dict['MAE'] = self.mae
             param_dict['loss'] = self.loss
