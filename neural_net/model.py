@@ -37,6 +37,10 @@ class PoseNet():
         self.N_convs = N_convs
         self.N_filters = N_filters
 
+        stamp = str(time.ctime())
+        stamp=stamp.replace(' ', '_')
+        self.stamp=stamp.replace(':', '-')
+
 
     def create_network(self, input_height, input_width, num_outputs):
         '''
@@ -54,7 +58,7 @@ class PoseNet():
 
         # 2nd convolution
         for i in range(self.N_convs):
-            self.model.add(Conv2D(filters=512, kernel_size=(3,3), padding='same'))
+            self.model.add(Conv2D(filters=self.N_filters, kernel_size=(3,3), padding='same'))
             if self.batch_bool:
                 self.model.add(BatchNormalization())
             self.model.add(Activation(self.conv_activation))
@@ -135,7 +139,12 @@ class PoseNet():
         '''
         plt.plot(self.history.history['loss'], label='Loss')
         plt.plot(self.history.history['val_loss'], label= 'Val Loss')
+        plt.savefig('saved_nets/'+self.option+'_'+self.stamp+'learning-curve.pdf')
         plt.legend(), plt.title('Loss Curve'), plt.show()
+
+
+    def return_history(self):
+        return self.model.history, self.model
 
 
     def save_network(self, shapes, outliers_removed, data_scaled):
@@ -166,12 +175,8 @@ class PoseNet():
             param_dict['loss'] = self.loss
             param_dict['MSE'] = self.mse
 
-        stamp = str(time.ctime())
-        stamp=stamp.replace(' ', '_')
-        stamp=stamp.replace(':', '-')
-
-        self.model.save('saved_nets/'+self.option+'_'+stamp+'/CNN.h5')
-        with open('saved_nets/'+self.option+'_'+stamp+'/params.json', 'w') as fp:
+        self.model.save('saved_nets/'+self.option+'_'+self.stamp+'/CNN.h5')
+        with open('saved_nets/'+self.option+'_'+self.stamp+'/params.json', 'w') as fp:
             json.dump(param_dict, fp)
             fp.close()
 
