@@ -1,12 +1,11 @@
-from train import read_data
 from model import PoseNet
-import plots as p
 import talos as ta
 import numpy as np
 
 
 def train_func(x_train, y_train, x_val, y_val, params):
 
+    path = 'C:/Users/chris/OneDrive/Uni/Summer_Research_Internship/Project/TacTip_Orientation/data'
 
     CNN = PoseNet(  option = params['option'],
                     conv_activation = params['conv_activation'],
@@ -22,8 +21,15 @@ def train_func(x_train, y_train, x_val, y_val, params):
                     N_filters = params['N_filters'],
                     )
 
+    x_train, x_test, x_val, y_train, y_test, y_val, test_scaler = CNN.read_data(params['shapes'], path,
+                                                        option = params['option'],
+                                                        val = False, 
+                                                        combine_shapes = True,
+                                                        scale_data = params['scale'],
+                                                        outlier_bool = params['outliers'])
+
     CNN.create_network(x_train[0].shape[0], 240, y_train.shape[1]) # create the NN
-    CNN.fit(x_train, y_train, epochs=500, batch_size = params['batch_size'], x_val=x_val, y_val=y_val) # train the NN
+    CNN.fit(x_train, y_train, epochs=500, batch_size = params['batch_size'], x_val=x_test, y_val=y_test) # train the NN
     #CNN.save_network(['pose_cube'], True, False)
     history, model = CNN.return_history()
 
@@ -32,20 +38,7 @@ def train_func(x_train, y_train, x_val, y_val, params):
 
 def main():
 
-    shapes = ['pose_cube']
-    path = 'C:/Users/chris/OneDrive/Uni/Summer_Research_Internship/Project/TacTip_Orientation/data'
-    
-    scale = False
-    val = False
-    outlier_bool = True
     sensor = 'object'
-
-    x_train, x_test, x_val, y_train, y_test, y_val, test_scaler = read_data(shapes, path,
-                                                        option = sensor,
-                                                        val = val, 
-                                                        combine_shapes = True,
-                                                        scale_data = scale,
-                                                        outlier_bool = outlier_bool)
 
     param_dict = {
             'option': [sensor],
@@ -60,11 +53,14 @@ def main():
             'batch_bool': [True, False],
             'N_convs': [2,3,4],
             'N_filters': [128, 256, 512],
-            'batch_size': [8,16]
+            'batch_size': [8,16],
+            'scale': [True, False],
+            'outliers': [True, False],
+            'shapes': [['pose_cube', 'pose_dodec', 'pose_dodec_so'], ['pose_dodec', 'pose_dodec_so'], ['pose_cube']]
     }
 
-    x = np.concatenate((x_train, x_test))
-    y = np.concatenate((y_train, y_test))
+    x = np.array([[1],[1],[1]])
+    y = np.array([1,1,1])
 
     t = ta.Scan(x=x,
                y=y,
