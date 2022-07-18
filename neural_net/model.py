@@ -1,5 +1,5 @@
 import numpy as np
-from tensorflow.keras.models import Sequential
+from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import Dense, Conv2D, MaxPooling2D, Flatten, Dropout, Activation, BatchNormalization
 from tensorflow.keras.optimizers import SGD, Adam
 import tensorflow.keras.regularizers as regularizers
@@ -306,7 +306,7 @@ class PoseNet():
         '''
         plt.plot(self.history.history['loss'], label='Loss')
         plt.plot(self.history.history['val_loss'], label= 'Val Loss')
-        plt.savefig('saved_nets/'+self.option+'_'+self.stamp+'learning-curve.pdf')
+        plt.savefig('saved_nets/'+self.option+'_'+self.stamp+'/learning-curve.pdf')
         plt.legend(), plt.title('Loss Curve'), plt.show()
 
 
@@ -321,7 +321,6 @@ class PoseNet():
         param_dict = {
             'sensors used': self.option,
             'training examples': self.x_train.shape[0],
-            'eval examples': self.x_val.shape[0],
             'test examples': self.x_test.shape[0],
             'epochs': self.epochs,
             'conv activation': self.conv_activation,
@@ -347,5 +346,15 @@ class PoseNet():
             json.dump(param_dict, fp)
             fp.close()
 
+
+    def load_net(self, path):
+
+        print('[INFO] Loading Model')
+        self.model = load_model(path+'/CNN.h5')
+
+    def predict(self, input):
+
+        angles = self.model.predict(input)
+        return angles
 
 
