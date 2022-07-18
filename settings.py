@@ -1,6 +1,7 @@
 '''
 File for initialising global variables
 '''
+from cgi import print_exception
 from threading import Event
 
 
@@ -23,6 +24,9 @@ def init():
 
     global rvec_buffer
     rvec_buffer = {}
+
+    global prediction_buffer
+    prediction_buffer = {}
 
     global frame_buffer
     frame_buffer = {}
