@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import train
+import model
 
 
 def plot_angle_distribution(y_train, y_test, sensor, y_val=None):
@@ -72,23 +72,49 @@ def plot_angle_hists(y_train, y_test, y_val=None):
     plt.show()
 
 
+def plot_prediction_line(true, pred, no_angles):
+
+    for i in range(no_angles):
+        plt.subplot(1,no_angles,i+1)
+        plt.plot([np.min(true), np.max(true)],[np.min(true), np.max(true)])
+        plt.scatter(true[:,i], pred[:,i])
+        plt.xlabel('True Angles '+str(i)), plt.ylabel('Predicted Angle '+str(i))
+    plt.show()
+
+
 
 def main():
-    shapes = ['cube','cylinder']
-    shapes = ['pose_cube']
+
+    net_path = 'neural_net/saved_nets/combined_Mon_Jul_18_16-20-32_2022'
+
+    sensor_net = model.PoseNet(  option = 'sensor',
+                    conv_activation = 'elu',
+                    dropout_rate = 0.001,
+                    l1_rate = 0.0001,
+                    l2_rate = 0.01,
+                    learning_rate = 0.00001,
+                    decay_rate = 0.000001,
+                    dense_width = 16,
+                    loss_func = 'mse',
+                    batch_bool = False,
+                    N_convs = 4,
+                    N_filters = 512
+                     )
+
+    sensor_net.load_net(net_path)
+
     path = 'C:/Users/chris/OneDrive/Uni/Summer_Research_Internship/Project/TacTip_Orientation/data'
-    
-    scale = False
-    val = True
-    sensor = 'object'
-
-    x_train, x_test, x_val, y_train, y_test, y_val, test_scaler = train.read_data(shapes, path,
-                                                        option = sensor,
-                                                        val = val, 
+    x_train, x_test, x_val, y_train, y_test, y_val, test_scaler = sensor_net.read_data(['pose_dodec_so', 'cube', 'cylinder'], path,
+                                                        option = 'combined',
+                                                        val = True, 
                                                         combine_shapes = True,
-                                                        scale_data = scale)
+                                                        scale_data = False,
+                                                        outlier_bool = True,
+                                                        binarise=True)
 
-    plot_angle_hists(y_train, y_test, y_val=y_val)
+    pred = sensor_net.predict(x_test)
+
+    plot_prediction_line(y_test, pred, 4)
 
     return 0
 
