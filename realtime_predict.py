@@ -10,32 +10,17 @@ Time the NN prediction to make sure this is feasible
 Initialisation - load the networks and the camera feeds
 
 '''
-from distutils.log import error
-from importlib.resources import path
 import cv2 as cv
 import threading
-from threading import Event
 import keyboard
 import time
-import json
 import os
-import sys
 import numpy as np
-from multiprocessing import Process
 from markers.camera_calibration.calibrate_camera import calibrate
 from markers.detect_markers import find_markers
 from collect_data import process_sensor_frame, camera_thread
 import settings
 from neural_net.model import PoseNet
-
-
-
-# Make new governing thread that accesses the buffers and displays what I want
-# need frame buffers - add my dict buffers to display_camera.
-
-# Add resizing for external
-# plan out final output frame
-# include kill switch
 
 class predict_thread(threading.Thread):
     def __init__(self, sensor_net_path, object_net_path):
@@ -117,20 +102,40 @@ class display_thread(threading.Thread):
 
             full = np.vstack((sensors_ext, blank))
 
+            decimals = 2
+
             # Get the true rotations from the markers
-            left_rvec = settings.rvec_buffer['left'][1:]
-            right_rvec = settings.rvec_buffer['right'][1:]
-            object_rvec = settings.rvec_buffer['object']
+            left_rvec = np.around(settings.rvec_buffer['left'][1:], decimals)
+            right_rvec = np.around(settings.rvec_buffer['right'][1:], decimals)
+            object_rvec = np.around(settings.rvec_buffer['object'], decimals)
 
             # Get the predicted rotations from the NNs
             try:
-                sensor_prediction = settings.prediction_buffer['sensor']
-                object_prediction = settings.prediction_buffer['object']
+                sensor_prediction = np.around(settings.prediction_buffer['sensor'], decimals)
+                object_prediction = np.around(settings.prediction_buffer['object'], decimals)
+
+                left_str = 'Left Sensor: '+str(left_rvec) + ' ' + str(sensor_prediction[0,:2])
+                right_str = 'Right Sensor: '+str(right_rvec) + ' ' + str(sensor_prediction[0,2:])
+                object_str = str(object_rvec) + ' '+ str(object_prediction)
+
+                # Display the rotations here
+                font                   = cv.FONT_HERSHEY_SIMPLEX
+                fontScale              = 0.6
+                fontColor              = (255,255,255)
+                thickness              = 1
+                lineType               = 2
+
+                for i, st in enumerate([left_str, right_str, object_str]):
+                    cv.putText(full, st, 
+                        (10, 450+(i*25)), 
+                        font, 
+                        fontScale,
+                        fontColor,
+                        thickness,
+                        lineType)
+
             except KeyError:
                 print('No predictions!!')
-
-            # Display the rotations here
-
 
             cv.imshow('Realtime Prediction', full)
 
@@ -179,7 +184,7 @@ def main():
     sensor2 = camera_thread('Sensor2', 1, (1920,1080), mode, process_sensor_frame, False, res=(240,135), crop = [300, 0, 1600, 1080], threshold = (59, -6))
     external = camera_thread('external', 2, (1920,1080), mode, find_markers, False, cam_mat=cam_mat, dist_mat=dist_mat)
 
-    sensor_path = 'combined_Tue_Jul__5_19-06-13_2022'
+    sensor_path = 'combined_Mon_Jul_18_16-20-32_2022'
     object_path = 'object_Sat_Jul_16_18-10-46_2022'
     predict = predict_thread('neural_net/saved_nets/'+sensor_path, 'neural_net/saved_nets/'+object_path)
     display = display_thread()

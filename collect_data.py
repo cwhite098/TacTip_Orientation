@@ -63,7 +63,9 @@ class camera_thread(threading.Thread):
                 tvec_dict = frame[2]
                 rvec_dict = frame[1]
                 rvec_dict = self.process_angles(rvec_dict)
+                settings.rvec_buffer = rvec_dict
                 #print(rvec_dict['left'])
+
                 frame = frame[0]
             else:
                 tvec_dict, rvec_dict = False, False
@@ -121,11 +123,11 @@ class camera_thread(threading.Thread):
 
             except KeyError:
                 print('[INFO] Marker not found, returning raw rotations')
-                dict = {'left': 0, 'right': 0, 'reference': 0}
+                dict = {'object': [0,0], 'left': [0,0], 'right': [0,0], 'reference': [0,0]}
                 return dict
             except TypeError:
                 print('[INFO] Marker Obscured, returning raw data')
-                dict = {'left': 0, 'right': 0, 'reference': 0}
+                dict = {'object': [0,0], 'left': [0,0], 'right': [0,0], 'reference': [0,0]}
                 return dict
             
             dict = self.get_relative_rotations(  [reference1, reference2], [l_sensor, r_sensor], ['left', 'right'],
@@ -140,11 +142,11 @@ class camera_thread(threading.Thread):
 
             except KeyError:
                 print('[INFO] Marker not found, returning raw rotations')
-                dict = {'object': 0, 'reference': 0}
+                dict = {'object': [0,0], 'left': [0,0], 'right': [0,0], 'reference': [0,0]}
                 return dict
             except TypeError:
                 print('[INFO] Marker Obscured, returning raw data')
-                dict = {'object': 0, 'reference': 0}
+                dict = {'object': [0,0], 'left': [0,0], 'right': [0,0], 'reference': [0,0]}
                 return dict
 
             dict = self.get_relative_rotations(  [reference1, reference2], [object1], ['object'],
@@ -160,11 +162,11 @@ class camera_thread(threading.Thread):
 
             except KeyError:
                 print('[INFO] Marker not found, returning raw rotations')
-                dict = {'object': 0, 'lsensor': 0, 'rsensor': 0, 'reference': 0}
+                dict = {'object': [0,0], 'left': [0,0], 'right': [0,0], 'reference': [0,0]}
                 return dict
             except TypeError:
                 print('[INFO] Marker Obscured, returning raw data')
-                dict = {'object': 0, 'lsensor': 0, 'rsensor': 0, 'reference': 0}
+                dict = {'object': [0,0], 'left': [0,0], 'right': [0,0], 'reference': [0,0]}
                 return dict
 
             dict = self.get_relative_rotations(  [reference1, reference2], [object1, l_sensor, r_sensor], ['object', 'left', 'right'],
@@ -185,7 +187,7 @@ class camera_thread(threading.Thread):
         # If the 2 reference markers vary dramatically, there is an error, return 0s
         if (np.abs(refs[0] - refs[1]) > 0.5).any():
             print('[INFO] Bad Reference Pose')
-            dict = {'left': 0, 'right': 0, 'reference': 0}
+            dict = {'object': [0,0], 'left': [0,0], 'right': [0,0], 'reference': [0,0]}
             return dict
 
         # If the sensors have moved too far in the last 5 frames,

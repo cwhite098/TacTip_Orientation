@@ -1,9 +1,7 @@
 '''
 File for initialising global variables
 '''
-from cgi import print_exception
 from threading import Event
-
 
 def init():
 
