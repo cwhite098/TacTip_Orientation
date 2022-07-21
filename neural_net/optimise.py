@@ -41,22 +41,22 @@ def main():
     sensor = 'object'
 
     param_dict = {
-            'option': [sensor],
+            'option': ['combined'],
             'conv_activation': ['elu', 'relu'],
-            'dropout_rate': [0.01, 0.001, 0.0001],
+            'dropout_rate': [0.0001],
             'l1_rate': [0.01, 0.001, 0.0001],
-            'l2_rate': [0.064, 0.001],
-            'learning_rate': [0.001, 0.0001],
+            'l2_rate': [0.001, 0.01],
+            'learning_rate': [0.0001, 0.00001],
             'decay_rate': [0.000001],
             'dense_width': [8, 16],
             'loss_func': ['mae', 'mse'],
-            'batch_bool': [True, False],
-            'N_convs': [2,3,4],
-            'N_filters': [128, 256, 512],
-            'batch_size': [8,16],
-            'scale': [True, False],
-            'outliers': [True, False],
-            'shapes': [['pose_cube', 'pose_dodec', 'pose_dodec_so'], ['pose_dodec', 'pose_dodec_so'], ['pose_cube']]
+            'batch_bool': [True],
+            'N_convs': [4,5],
+            'N_filters': [128, 256],
+            'batch_size': [16],
+            'scale': [False],
+            'outliers': [True],
+            'shapes': [['cube', 'cylinder', 'pose_dodec_so']]
     }
 
     x = np.array([[1],[1],[1]])
@@ -66,8 +66,8 @@ def main():
                y=y,
                model=train_func,
                params=param_dict,
-               experiment_name='optim1',
-               round_limit=50,
+               experiment_name='sensor_pose',
+               round_limit=150,
                disable_progress_bar=False)
 
 
