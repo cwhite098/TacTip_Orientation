@@ -1,13 +1,5 @@
 from model import PoseNet
 import plots as p
-import os
-import shutil
-import cv2 as cv
-import json
-import numpy as np
-
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
-import matplotlib.pyplot as plt
 
 
 def main():
