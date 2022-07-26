@@ -1,6 +1,6 @@
 import numpy as np
-from tensorflow.keras.models import Sequential, load_model
-from tensorflow.keras.layers import Dense, Conv2D, MaxPooling2D, Flatten, Dropout, Activation, BatchNormalization
+from tensorflow.keras.models import Sequential, load_model, Model
+from tensorflow.keras.layers import Dense, Conv2D, MaxPooling2D, Flatten, Dropout, Activation, BatchNormalization, Concatenate, Input
 from tensorflow.keras.optimizers import SGD, Adam
 import tensorflow.keras.regularizers as regularizers
 from tensorflow.keras.callbacks import EarlyStopping
@@ -89,7 +89,7 @@ class PoseNet():
         self.stamp=stamp.replace(':', '-')
 
 
-    def read_data(self, shapes, path, option, val, combine_shapes=False, scale_data=False, outlier_bool = True):
+    def read_data(self, shapes, path, option, val, combine_shapes=False, scale_data=False, outlier_bool = True, binarise= False):
         '''
         Function that reads the data that has been collected for the different shapes
         Carries out a train/test split to be used to train NN.
@@ -112,6 +112,10 @@ class PoseNet():
                 sensor1 = cv.imread(path+'/'+s+'/'+example+'/sensor1.png', cv.IMREAD_GRAYSCALE)
                 sensor2 = cv.imread(path+'/'+s+'/'+example+'/sensor2.png', cv.IMREAD_GRAYSCALE)
 
+                if binarise: # binarise the images so they are only 0s and 1s
+                    th, sensor1 = cv.threshold(sensor1, 100, 1, cv.THRESH_BINARY)
+                    th, sensor2 = cv.threshold(sensor2, 100, 1, cv.THRESH_BINARY)
+
                 # Read the orientation data
                 with open(path+'/'+s+'/'+example+'/rvec.json', 'r') as f:
                     rvec_dict = json.load(f)
@@ -124,20 +128,53 @@ class PoseNet():
                         #shutil.rmtree(path+'/'+s+'/'+example)
                         object_rot = 0
                     # Check if the data is good and if so, save.
-                    if isinstance(object_rot, int):
+                    if len(object_rot)==2:
                         print('ZERO ROTATION FOUND: '+example)
                         shutil.rmtree(path+'/'+s+'/'+example)
                     else:
                         X.append(np.vstack((sensor1, sensor2)))
                         target = np.array(object_rot)
                         Y.append(target)
+
+                elif option == 'sensor+object' or option == 'sensor+object_split' or option == 'relative':
+                    try:
+                        object_rot = rvec_dict['object']
+                        sensor1_rot = rvec_dict['left']
+                        sensor2_rot = rvec_dict['right']
+                    except KeyError:
+                        print('Reading not found')
+                    if len(object_rot)==2 or len(sensor1_rot)==2 or len(sensor2_rot)==2:
+                        print('ZERO ROTATION FOUND: '+example)
+                        shutil.rmtree(path+'/'+s+'/'+example)
+                    else:
+                        X1 = []
+                        X2 = []
+                        if option == 'sensor+object':
+                            X.append(np.vstack((sensor1, sensor2)))
+                        elif option == 'sensor+object_split':
+                            X1.append(sensor1)
+                            X2.append(sensor2)
+                            X.append([sensor1, sensor2])
+
+                        target = np.array([sensor1_rot[1], sensor1_rot[2], sensor2_rot[1], sensor2_rot[2], object_rot[0],
+                            object_rot[1], object_rot[2]])
+                        
+                        if option == 'relative':
+                            X.append(np.vstack((sensor1, sensor2)))
+                            target = np.array([sensor1_rot[0]-object_rot[0], sensor1_rot[1]-object_rot[1], sensor1_rot[2]-object_rot[2],
+                                                sensor2_rot[0]-object_rot[0], sensor2_rot[1]-object_rot[1], sensor2_rot[2]-object_rot[2]])
+
+                        Y.append(target)
                 
                 else:
                     sensor1_rot = rvec_dict['left']
                     sensor2_rot = rvec_dict['right']
+                    if isinstance(sensor1_rot, int):
+                        sensor1_rot, sensor2_rot = [0,0], [0,0]
                     # Check if the data is good and if so, save.
-                    if isinstance(sensor1_rot, int) & isinstance(sensor2_rot, int):
+                    if len(sensor1_rot)==2 & len(sensor2_rot)==2:
                         print('ZERO ROTATION FOUND: '+example)
+                        shutil.rmtree(path+'/'+s+'/'+example)
                     else:
                         if option == 'combined':
                             X.append(np.vstack((sensor1, sensor2)))
@@ -189,24 +226,45 @@ class PoseNet():
             y_val_scaled = y_val
 
         # Print info
-        print('Training Examples: ', len(x_train))
-        print('Training Labels: ', len(y_train))
-        print('Testing Examples: ', len(x_test))
-        print('Testing Labels: ', len(y_test))
-        if val:
-            print('Validation Examples: ', len(x_val))
-            print('Validation Labels: ', len(y_val))
-        print('Size of image: ', x_train[1].shape)
-        print('Shape of Targets: ', y_test[0].shape)
+        if not option == 'sensor+object_split':
+            print('Training Examples: ', len(x_train))
+            print('Training Labels: ', len(y_train))
+            print('Testing Examples: ', len(x_test))
+            print('Testing Labels: ', len(y_test))
+            if val:
+                print('Validation Examples: ', len(x_val))
+                print('Validation Labels: ', len(y_val))
+            print('Size of image: ', x_train[1].shape)
+            print('Shape of Targets: ', y_test[0].shape)
 
-        # Reshape for insertion into network
-        x_train = np.array(x_train).reshape(len(x_train), x_train[0].shape[0],240,1)
-        x_test = np.array(x_test).reshape(len(x_test), x_train[0].shape[0],240,1)
-        if val:
-            x_val = np.array(x_val).reshape(len(x_val), x_train[0].shape[0],240,1)
-            return x_train, x_test, x_val, np.array(y_train_scaled), np.array(y_test_scaled), np.array(y_val_scaled), test_scaler
+            # Reshape for insertion into network
+            x_train = np.array(x_train).reshape(len(x_train), x_train[0].shape[0],240,1)
+            x_test = np.array(x_test).reshape(len(x_test), x_train[0].shape[0],240,1)
+            if val:
+                x_val = np.array(x_val).reshape(len(x_val), x_train[0].shape[0],240,1)
+                return x_train, x_test, x_val, np.array(y_train_scaled), np.array(y_test_scaled), np.array(y_val_scaled), test_scaler
+            else:
+                return x_train, x_test, None, np.array(y_train_scaled), np.array(y_test_scaled), None, test_scaler
+
         else:
-            return x_train, x_test, None, np.array(y_train_scaled), np.array(y_test_scaled), None, test_scaler
+            x_test = np.array(x_test)
+            x_test1 = x_test[:,0,:,:]
+            x_test2 = x_test[:,1,:,:]
+            x_test = [x_test1.reshape(x_test1.shape[0], x_test1.shape[1], 240,1), x_test2.reshape(x_test1.shape[0], x_test1.shape[1], 240,1)]
+            x_train = np.array(x_train)
+            x_train1 = x_train[:,0,:,:]
+            x_train2 = x_train[:,1,:,:]
+            x_train = [x_train1.reshape(x_train1.shape[0], x_test1.shape[1], 240,1), x_train2.reshape(x_train1.shape[0], x_test1.shape[1], 240,1)]
+            if val:
+                x_val = np.array(x_val)
+                x_val1 = x_val[:,0,:,:]
+                x_val2 = x_val[:,1,:,:]
+                x_val = [x_val1.reshape(x_val1.shape[0], x_test1.shape[1], 240,1), x_val2.reshape(x_val1.shape[0], x_test1.shape[1], 240,1)]
+                return x_train, x_test, x_val, np.array(y_train_scaled), np.array(y_test_scaled), np.array(y_val_scaled), test_scaler
+
+            else:
+                return x_train, x_test, None, np.array(y_train_scaled), np.array(y_test_scaled), None, test_scaler
+
 
 
     def create_network(self, input_height, input_width, num_outputs):
@@ -248,6 +306,61 @@ class PoseNet():
         self.model.compile(loss=self.loss_func, 
                         optimizer=Adam(learning_rate=self.learning_rate, decay = self.decay_rate), 
                         metrics=['mae', 'mse'])
+
+
+    def create_network_di(self, input_height, input_width, num_outputs):
+        '''
+        create a CNN model with 2 inputs
+        '''
+        # input layers
+        input1 = Input(shape=(input_height, input_width,1))
+        input2 = Input(shape=(input_height, input_width,1))
+
+        # 1st conv
+        conv11 = Conv2D(filters=self.N_filters, kernel_size=(3,3), padding='same')(input1)
+        conv12 = Conv2D(filters=self.N_filters, kernel_size=(3,3), padding='same')(input2)
+        if self.batch_bool:
+            batchnorm11 = BatchNormalization()(conv11)
+            batchnorm12 = BatchNormalization()(conv12)
+        activ11 = Activation(self.conv_activation)(batchnorm11)
+        activ12 = Activation(self.conv_activation)(batchnorm12)
+        pool11 = MaxPooling2D(pool_size=(2,2), strides=(2,2))(activ11)
+        pool12 = MaxPooling2D(pool_size=(2,2), strides=(2,2))(activ12)
+
+        # 2nd conv
+        conv21 = Conv2D(filters=self.N_filters, kernel_size=(3,3), padding='same')(pool11)
+        conv22 = Conv2D(filters=self.N_filters, kernel_size=(3,3), padding='same')(pool12)
+        if self.batch_bool:
+            batchnorm21 = BatchNormalization()(conv21)
+            batchnorm22 = BatchNormalization()(conv22)
+        activ21 = Activation(self.conv_activation)(batchnorm21)
+        activ22 = Activation(self.conv_activation)(batchnorm22)
+        pool21 = MaxPooling2D(pool_size=(2,2), strides=(2,2))(activ21)
+        pool22 = MaxPooling2D(pool_size=(2,2), strides=(2,2))(activ22)
+
+        # Flatten the images
+        flat1 = Flatten()(pool21)
+        flat2 = Flatten()(pool22)
+
+        # Merge the 2 branches
+        merged = Concatenate()([flat1, flat2])
+
+        # dropout
+        drop1 = Dropout(rate=self.dropout_rate)(merged)
+
+        #dense
+        dense1 = Dense(self.dense_width, activation='relu', 
+                        kernel_regularizer=regularizers.L1L2(l1=self.l1_rate, l2=self.l2_rate))(drop1)
+        drop2 = Dropout(rate=self.dropout_rate)(dense1)
+        
+        #  Output
+        output = Dense(num_outputs, activation='linear', 
+                    kernel_regularizer=regularizers.L1L2(l1=self.l1_rate, l2=self.l2_rate))(drop2)
+
+        self.model = Model(inputs = [input1, input2], outputs=output)
+        self.model.compile(loss=self.loss_func, 
+                        optimizer=Adam(learning_rate=self.learning_rate, decay = self.decay_rate), 
+                        metrics=['mae', 'mse'])
     
 
     def fit(self, x_train, y_train, epochs, batch_size, 
@@ -263,7 +376,7 @@ class PoseNet():
         self.epochs = epochs
 
         # Train the network
-        if isinstance(x_val, np.ndarray) and isinstance(y_val, np.ndarray):
+        if (isinstance(x_val, np.ndarray) and isinstance(y_val, np.ndarray)) or (isinstance(x_val, list) and isinstance(y_val, np.ndarray)):
             callback = EarlyStopping(monitor='val_loss', patience=10)
             self.history = self.model.fit(x_train, y_train,
                                         epochs=epochs,
