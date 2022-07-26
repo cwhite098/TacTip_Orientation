@@ -22,11 +22,22 @@ from collect_data import process_sensor_frame, camera_thread
 import settings
 from neural_net.model import PoseNet
 
+
+def binarise(frame):
+    th, frame = cv.threshold(frame, 100, 1, cv.THRESH_BINARY)
+    return frame
+
 class predict_thread(threading.Thread):
-    def __init__(self, sensor_net_path, object_net_path):
+    def __init__(self, sensor_net_path, object_net_path, combined_path=False):
         threading.Thread.__init__(self)
         self.sensor_net_path = sensor_net_path
         self.object_net_path = object_net_path
+
+        if isinstance(combined_path, str):
+            self.net_path = combined_path
+            self.combined = True
+        else:
+            self.combined = False
 
     def run(self):
 
@@ -34,13 +45,19 @@ class predict_thread(threading.Thread):
         time.sleep(5)
 
         while True:
-            l_sensor = settings.frame_buffer['Sensor1']
-            r_sensor = settings.frame_buffer['Sensor2']
+            l_sensor = binarise(settings.frame_buffer['Sensor1'])
+            r_sensor = binarise(settings.frame_buffer['Sensor2'])
             input_frame = np.vstack((l_sensor, r_sensor)).reshape((1, 270,240,1))
-            sensor_angles = self.sensor_net.predict(input_frame)
-            object_angles = self.object_net.predict(input_frame)
-            settings.prediction_buffer['sensor'] = sensor_angles
-            settings.prediction_buffer['object'] = object_angles
+            if self.combined:
+                angles = self.sensor_net.predict(input_frame)
+                settings.prediction_buffer['sensor'] = angles[:4]
+                settings.prediction_buffer['object'] = angles[4:]
+
+            else:
+                sensor_angles = self.sensor_net.predict(input_frame)
+                object_angles = self.object_net.predict(input_frame)
+                settings.prediction_buffer['sensor'] = sensor_angles
+                settings.prediction_buffer['object'] = object_angles
 
     def load_nets(self):
         # Init 2 posenet classses with any args
@@ -71,14 +88,18 @@ class predict_thread(threading.Thread):
                     N_filters = 512
                      )
 
-        self.object_net.load_net(self.object_net_path)
-        self.sensor_net.load_net(self.sensor_net_path)
+        if self.combined:
+            self.sensor_net.load_net(self.net_path)
+        else:
+            self.object_net.load_net(self.object_net_path)
+            self.sensor_net.load_net(self.sensor_net_path)
         
 
 
 class display_thread(threading.Thread):
-    def __init__(self):
+    def __init__(self, combined):
         threading.Thread.__init__(self)
+        self.combined = combined
 
     def run(self):
         self.make_frame()
@@ -111,12 +132,20 @@ class display_thread(threading.Thread):
 
             # Get the predicted rotations from the NNs
             try:
-                sensor_prediction = np.around(settings.prediction_buffer['sensor'], decimals)
-                object_prediction = np.around(settings.prediction_buffer['object'], decimals)
 
-                left_str = 'Left Sensor: '+str(left_rvec) + ' ' + str(sensor_prediction[0,:2])
-                right_str = 'Right Sensor: '+str(right_rvec) + ' ' + str(sensor_prediction[0,2:])
-                object_str = str(object_rvec) + ' '+ str(object_prediction)
+                if self.combined:
+                    preds = np.around(settings.prediction_buffer['sensor'], decimals)
+                    left_str = 'Left Sensor: '+str(left_rvec) + ' ' + str(preds[0,:2])
+                    right_str = 'Right Sensor: '+str(right_rvec) + ' ' + str(preds[0,2:4])
+                    object_str = str(object_rvec) + ' '+ str(preds[0,4:])
+
+                else:
+                    sensor_prediction = np.around(settings.prediction_buffer['sensor'], decimals)
+                    object_prediction = np.around(settings.prediction_buffer['object'], decimals)
+
+                    left_str = 'Left Sensor: '+str(left_rvec) + ' ' + str(sensor_prediction[0,:2])
+                    right_str = 'Right Sensor: '+str(right_rvec) + ' ' + str(sensor_prediction[0,2:])
+                    object_str = str(object_rvec) + ' '+ str(object_prediction)
 
                 # Display the rotations here
                 font                   = cv.FONT_HERSHEY_SIMPLEX
@@ -184,10 +213,11 @@ def main():
     sensor2 = camera_thread('Sensor2', 1, (1920,1080), mode, process_sensor_frame, False, res=(240,135), crop = [300, 0, 1600, 1080], threshold = (59, -6))
     external = camera_thread('external', 2, (1920,1080), mode, find_markers, False, cam_mat=cam_mat, dist_mat=dist_mat)
 
-    sensor_path = 'combined_Mon_Jul_18_16-20-32_2022'
+    sensor_path = 'combined_Thu_Jul_21_11-22-40_2022'
     object_path = 'object_Sat_Jul_16_18-10-46_2022'
-    predict = predict_thread('neural_net/saved_nets/'+sensor_path, 'neural_net/saved_nets/'+object_path)
-    display = display_thread()
+    combined_path = 'neural_net/saved_nets/'+'sensor+object_Fri_Jul_22_14-33-23_2022'
+    predict = predict_thread('neural_net/saved_nets/'+sensor_path, 'neural_net/saved_nets/'+object_path, combined_path=combined_path)
+    display = display_thread(True)
     x_switch = kill_switch()
 
     sensor1.start()
