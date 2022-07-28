@@ -39,7 +39,25 @@ def train_test_val_split(X, Y):
 
 def remove_outliers(X, Y, lower, upper):
     '''
-    Function to remove outliers in the angles
+    Function to remove outliers in the angles from the collected data.
+    
+    Parameters
+    ----------
+    X : np.array
+        The set of features.
+    Y : np.array
+        The set of labels.
+    lower : int
+        The lower bound of the data to be kept (as a percentage)
+    upper : int
+        The upper bound of the data to be kept (as a percentage)
+
+    Returns
+    -------
+    X : np.array
+        The reduced set of features.
+    Y : np.array
+        The reduced set of labels.
     '''
     print('[INFO] Removing Outliers')
     Y = np.array(Y)
@@ -84,33 +102,63 @@ class PoseNet():
         self.N_convs = N_convs
         self.N_filters = N_filters
 
+        # Get the time to be used for saving the model
         stamp = str(time.ctime())
         stamp=stamp.replace(' ', '_')
         self.stamp=stamp.replace(':', '-')
 
 
-    def read_data(self, shapes, path, option, val, combine_shapes=False, scale_data=False, outlier_bool = True, binarise= False):
+    def read_data(self, shapes, path, option, val, scale_data=False, outlier_bool = True, binarise= False):
         '''
         Function that reads the data that has been collected for the different shapes
         Carries out a train/test split to be used to train NN.
 
+        Parameters
+        ----------
+        shapes : list
+            List containing the names of the shapes to be included in the dataset.
+        path : str
+            The path to the data.
         option : str
-            Can be 'left' or 'right' for individual sensors.
-            Can be 'dual' for one net with both sensors being input.
-            Can be 'combined' for stacked images -> 4 angles.
+            Can be 'left' or 'right' for individual sensors (sensor poses).
+            Can be 'dual' for one net with both sensors being input (sensor poses).
+            Can be 'combined' for stacked images -> 4 angles (sensor poses).
+            Can be 'object' for stacked images -> 3 object angles (object pose).
+            Can be 'sensor+object' for stacked images -> object pose relative to each sensor.
+        val : bool
+            A True/False value that decides if a validation set will be created.
+        scale_data : bool
+            True/False for using a standard scaler on the angles (typically False).
+        outlier_bool : bool
+            True/False for removing the outliers from the dataset (outlying angles).
+        binarise : bool
+            True/False for making the tactile images binary with only values of 0 or 1 (recommended True).
+
+        Returns
+        -------
+        x_train : np.array
+            Array containing the tactile images.
+        x_test : np.array
+            Array containing the tactile images.
+        x_val :np.array
+            Array containing the tactile images (None if val=False).
+        y_train : np.array
+            Array containing target angles.
+        y_test : np.array
+            Array containing target angles.
+        y_val : np.array
+            Array containing target angles (None if val=False).
+        test_scaler : StandardScaler
+            A scipy standard scaler object that was used to scale the test set.
+            (None if scale_data = False).
         '''
 
         X = []
         Y = []
-        z_180_rot = np.array([0,0,np.pi])
-        z_180_mat = np.array([[0,0,0],[0,0,0],[0,0,0]])
-        mat180 = cv.Rodrigues(z_180_rot, z_180_mat)[0]
 
-        available_shapes = os.listdir(path)
         for s in shapes:
             snapshots = os.listdir(path+'/'+s)
             for example in snapshots:
-
                 # Read the images
                 sensor1 = cv.imread(path+'/'+s+'/'+example+'/sensor1.png', cv.IMREAD_GRAYSCALE)
                 sensor2 = cv.imread(path+'/'+s+'/'+example+'/sensor2.png', cv.IMREAD_GRAYSCALE)
@@ -178,7 +226,6 @@ class PoseNet():
                             R_ro = np.matmul(inv_trans, R_oc)
                             object_euler_r=cv.Rodrigues(R_ro)[0].flatten()
                         
-
                         target = np.array([object_euler_l[0], object_euler_l[1], object_euler_l[2], object_euler_r[0], object_euler_r[1],
                             object_euler_r[2]])
 
@@ -287,7 +334,16 @@ class PoseNet():
 
     def create_network(self, input_height, input_width, num_outputs):
         '''
-        Create the CNN model.
+        Create the CNN model as a sequential model in Keras.
+
+        Parameters
+        ----------
+        input_height : int
+            The height in pixels of the input images.
+        input_width : int
+            The width in pixels of the input images.
+        num_outputs : int
+            The length of the target vectors.
         '''
         self.model = Sequential()
 
@@ -328,7 +384,7 @@ class PoseNet():
 
     def create_network_di(self, input_height, input_width, num_outputs):
         '''
-        create a CNN model with 2 inputs
+        create a CNN model with 2 inputs [NOT IN USE]
         '''
         # input layers
         input1 = Input(shape=(input_height, input_width,1))
@@ -384,7 +440,22 @@ class PoseNet():
     def fit(self, x_train, y_train, epochs, batch_size, 
             x_val=None, y_val=None):
         '''
-        Fit (train) the NN.
+        Fit (train) the NN with early stopping if a validation set is provided.
+
+        Parameters
+        ----------
+        x_train : np.array
+            The training set's images.
+        y_train : np.array
+            The training set's target images.
+        epochs : int
+            The maximum number of epochs to train for.
+        batch_size : int
+            The batch size to train the network with.
+        x_val : np.array / None
+            The validation set's images (if provided).
+        y_val : np.array / None
+            The validations set's targets (if provided).
         '''
         # Save details on the training data
         self.x_train = x_train
@@ -479,12 +550,26 @@ class PoseNet():
 
 
     def load_net(self, path):
-
+        '''
+        Load a pre-trained model from a .h5 file.
+        
+        Parameters
+        ----------
+        path : str
+            The path to the folder containing the saved model.
+        '''
         print('[INFO] Loading Model')
         self.model = load_model(path+'/CNN.h5')
 
     def predict(self, input):
+        '''
+        Generate predictions to a set of inputs.
 
+        Parameters
+        ----------
+        input : np.array
+            Array containing the set of tactile images to generate predictions for.
+        '''
         angles = self.model.predict(input)
         return angles
 
