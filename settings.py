@@ -14,9 +14,6 @@ def init():
     global l_buffer
     l_buffer = []
     
-    global error_buffer
-    error_buffer = []
-    
     global object_buffer
     object_buffer = []
 
@@ -34,9 +31,6 @@ def init():
 
     global capture_counter
     capture_counter = 0
-
-    global error
-    error = Event()
 
     global stamp
     stamp = ''
