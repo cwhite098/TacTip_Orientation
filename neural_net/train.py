@@ -10,7 +10,7 @@ def main():
     scale = False
     val = True
     outlier_bool = False
-    sensor = 'relative'
+    sensor = 'sensor+object'
 
     CNN = PoseNet(  option = sensor,
                     conv_activation = 'elu',
@@ -39,7 +39,7 @@ def main():
     CNN.create_network(x_train[0].shape[0], 240, y_train.shape[1]) # create the NN
     #CNN.create_network_di(135, 240, y_train.shape[1])
     CNN.summary()
-    CNN.fit(x_train, y_train, epochs=500, batch_size=8, x_val=x_val, y_val=y_val) # train the NN
+    CNN.fit(x_train, y_train, epochs=150, batch_size=8, x_val=x_val, y_val=y_val) # train the NN
     CNN.evaluate(x_test, y_test) # evaluate the NN
     CNN.save_network(shapes, outlier_bool, scale)
     CNN.plot_learning_curves()
