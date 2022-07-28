@@ -10,17 +10,42 @@ from markers.detect_markers import find_markers
 import settings
 
 class camera_thread(threading.Thread):
+    '''
+    Class that creates a new thread to capture the stream from an attached camera.
+    '''
     def __init__(self, display_name, camera_id, resolution, mode, processing_func=None, display_bool=True, **process_args):
+        '''
+        Parameters
+        ----------
+        display_name : str
+            String that forms the name of the window displaying the camera.
+        camera_id : int
+            The number used to identify the camera for the string - from your OS.
+        resolution : tuple
+            A tuple containing the horizontal and vertical resolution to capture from the camera.
+        mode : str
+            The data collection mode, either 's' for sensor, 'o' for object or 'so' for sensor and object.
+            This corresponds to the poses which will be tracked.
+        processing_func : function
+            A function that performs some processing on each frame. Must have frame (array) as input and output.
+        display_bool : bool
+            True displays the camera feed, False does not.
+        **process_args
+            Optional arguments that will be passed to the processing function.
+        '''
         threading.Thread.__init__(self)
-        self.display_name = display_name
+        self.display_name = display_name # name of the display window
         self.camera_id = camera_id
         self.resolution = resolution
         self.display_bool = display_bool
-        self.processing_func = processing_func
+        self.processing_func = processing_func # a function to apply processing to each frame
         self.process_args = process_args
-        self.mode = mode
+        self.mode = mode # the data collection mode
 
     def run(self):
+        '''
+        Function that runs when the thread is initialised.
+        '''
         print('[INFO] Starting thread '+self.display_name)
         if self.display_bool:
             print('[INFO] Displaying '+self.display_name)
@@ -47,19 +72,18 @@ class camera_thread(threading.Thread):
             ret=False
 
         while ret:
-
             ret, frame = cam.read()
-
+            # Apply the provided processing
             if processing_func is not None:
                 frame = processing_func(frame, **process_args)
 
+            # If the processing func returns multiple vars they
+            # need to be unpacked.
             if type(frame) == tuple:
                 tvec_dict = frame[2]
                 rvec_dict = frame[1]
-                rvec_dict = self.process_angles(rvec_dict)
-                settings.rvec_buffer = rvec_dict
-                #print(rvec_dict['left'])
-
+                rvec_dict = self.verif_angles(rvec_dict)
+                settings.rvec_buffer = rvec_dict # add the rvec to the global buffer
                 frame = frame[0]
             else:
                 tvec_dict, rvec_dict = False, False
@@ -79,15 +103,10 @@ class camera_thread(threading.Thread):
                     with open(PATH+settings.stamp+'/tvec.json', 'w') as fp:
                         json.dump(tvec_dict, fp)
                         fp.close()
-
+                # Increment the global capture counter so the programme knows when all 3
+                # frames have been collected
                 settings.capture_counter += 1
                 time.sleep(3)
-
-            if settings.error.is_set():
-                # Collect some readings to find the error in the pose
-                # estimation
-                if rvec_dict:
-                    settings.error_buffer.append([rvec_dict['left'][1:], rvec_dict['right'][1:]])
             
             settings.frame_buffer[display_name] = frame
 
@@ -99,11 +118,20 @@ class camera_thread(threading.Thread):
 
         
 
-
-    def process_angles(self, rvec_dict):
+    def verif_angles(self, rvec_dict):
         '''
-        Function that processes the raw angle data.
-        Makes the sensor rotations relative to some other marker
+        Function that verifies that all the required markers are detected, and if so
+        they angles are sent to be processed.
+
+        Parameters
+        ----------
+        rvec_dict : dict
+            Dictionary containing the marker numbers and their associated poses.
+
+        Returns
+        -------
+        dict : dict
+            Dictionary containing the poses of all the objects/sensors being tracked.
         '''
         buffer_size = 10
 
@@ -123,7 +151,7 @@ class camera_thread(threading.Thread):
                 dict = {'object': [0,0], 'left': [0,0], 'right': [0,0], 'reference': [0,0]}
                 return dict
             
-            dict = self.get_relative_rotations(  [reference1, reference2], [l_sensor, r_sensor], ['left', 'right'],
+            dict = self.process_rotations(  [reference1, reference2], [l_sensor, r_sensor], ['left', 'right'],
                                             [settings.l_buffer, settings.r_buffer], buffer_size)
 
             
@@ -142,7 +170,7 @@ class camera_thread(threading.Thread):
                 dict = {'object': [0,0], 'left': [0,0], 'right': [0,0], 'reference': [0,0]}
                 return dict
 
-            dict = self.get_relative_rotations(  [reference1, reference2], [object1], ['object'],
+            dict = self.process_rotations(  [reference1, reference2], [object1], ['object'],
                                             [settings.object_buffer], buffer_size)
 
         elif self.mode  == 'so':
@@ -162,15 +190,37 @@ class camera_thread(threading.Thread):
                 dict = {'object': [0,0], 'left': [0,0], 'right': [0,0], 'reference': [0,0]}
                 return dict
 
-            dict = self.get_relative_rotations(  [reference1, reference2], [object1, l_sensor, r_sensor], ['object', 'left', 'right'],
+            dict = self.process_rotations(  [reference1, reference2], [object1, l_sensor, r_sensor], ['object', 'left', 'right'],
                                             [settings.object_buffer, settings.l_buffer, settings.r_buffer], buffer_size)
-
 
         print(dict)
         return dict
 
 
-    def get_relative_rotations(self, refs, markers, names, buffers, buffer_size):
+    def process_rotations(self, refs, markers, names, buffers, buffer_size):
+        '''
+        Function that processes the angles when they have been found from the markers.
+
+        Parameters
+        ----------
+        refs : list
+            List containing the poses of the two reference markers
+        markers : list
+            List containing the poses of the object/sensors.
+        names : list
+            List containing strings for the names of each sensor/object to be used when 
+            saving the data as a json.
+        buffers : list
+            List containing the global buffers that are used to hold and verify
+            the pose data.
+        buffer_size : int
+            The maximum length of the buffers containing the pose data.
+
+        Returns
+        -------
+        dict : dict
+            Dictionary containing the poses of all the objects/sensors being tracked.
+        '''
 
         output_rots = []
 
@@ -215,8 +265,6 @@ class camera_thread(threading.Thread):
         for i, output in enumerate(output_rots):
             dict[names[i]] = output
         dict['reference'] = reference
-
-        # Missing the printing of the angles during data collection
 
         return dict
 
