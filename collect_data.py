@@ -57,6 +57,23 @@ class camera_thread(threading.Thread):
 
 
     def display_camera(self, display_name, camera_id, resolution, processing_func, display_bool=True, **process_args):
+        '''
+        Function that reads the camera, applies processing and displays the frames
+        Parameters
+        ----------
+        display_name : str
+            String that forms the name of the window displaying the camera.
+        camera_id : int
+            The number used to identify the camera for the string - from your OS.
+        resolution : tuple
+            A tuple containing the horizontal and vertical resolution to capture from the camera.
+        processing_func : function
+            A function that performs some processing on each frame. Must have frame (array) as input and output.
+        display_bool : bool
+            True displays the camera feed, False does not.
+        **process_args
+            Optional arguments that will be passed to the processing function.
+        '''
 
         if display_bool:
             cv.namedWindow(display_name)
