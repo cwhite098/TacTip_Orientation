@@ -13,7 +13,7 @@ class camera_thread(threading.Thread):
     '''
     Class that creates a new thread to capture the stream from an attached camera.
     '''
-    def __init__(self, display_name, camera_id, resolution, mode, processing_func=None, display_bool=True, **process_args):
+    def __init__(self, display_name, camera_id, resolution, mode, path, processing_func=None, display_bool=True, **process_args):
         '''
         Parameters
         ----------
@@ -41,6 +41,7 @@ class camera_thread(threading.Thread):
         self.processing_func = processing_func # a function to apply processing to each frame
         self.process_args = process_args
         self.mode = mode # the data collection mode
+        self.path = path
 
     def run(self):
         '''
@@ -94,13 +95,13 @@ class camera_thread(threading.Thread):
             # if data saving is occurring
             if settings.capture.is_set():
                 # write the image to the folder
-                cv.imwrite(PATH+ settings.stamp + '/' + display_name + '.png', frame)
+                cv.imwrite(self.path+ settings.stamp + '/' + display_name + '.png', frame)
                 if rvec_dict:
                     # dump the rotation data
-                    with open(PATH+settings.stamp+'/rvec.json', 'w') as fp:
+                    with open(self.path+settings.stamp+'/rvec.json', 'w') as fp:
                         json.dump(rvec_dict, fp)
                         fp.close()
-                    with open(PATH+settings.stamp+'/tvec.json', 'w') as fp:
+                    with open(self.path+settings.stamp+'/tvec.json', 'w') as fp:
                         json.dump(tvec_dict, fp)
                         fp.close()
                 # Increment the global capture counter so the programme knows when all 3
@@ -254,9 +255,6 @@ class camera_thread(threading.Thread):
             # convert to list for json dump
             output_rots[i] = output.tolist()
 
-        for i, output in enumerate(output_rots):
-            output_rots[i] = output.tolist()
-
         # Convert reference
         reference = reference.tolist()
 
@@ -271,7 +269,16 @@ class camera_thread(threading.Thread):
 
     
 class collection_thread(threading.Thread):
+    '''
+    Thread that facilitates the operator interacting with the data collection process.
+    '''
     def __init__(self, path):
+        '''
+        Parameters
+        ----------
+        path : str
+            The path to the data folder in the workspace.
+        '''
         threading.Thread.__init__(self)
         self.path = path
 
@@ -290,26 +297,6 @@ class collection_thread(threading.Thread):
         print('[INFO] Closing Data Collection')
         os._exit(1)
 
-    def pose_error(self):
-        keyboard.press('e')
-        print('[INFO] Collecting measurements for precision analysis')
-        settings.error.set()
-        time.sleep(10)
-        error_array = np.array(settings.error_buffer)
-        psi1 = np.ptp(error_array[:,0,0])
-        phi1 = np.ptp(error_array[:,0,1])
-        psi2 = np.ptp(error_array[:,1,0])
-        phi2 = np.ptp(error_array[:,1,1])
-        print('Ranges: \n', 
-                'Psi1: ', psi1,'\n',
-                'Phi1: ', phi1,'\n',
-                'Psi2: ', psi2,'\n',
-                'Phi2: ', phi2)
-        time.sleep(3)
-        settings.error_buffer = []
-        settings.error.clear()
-
-
     def save_key(self):
         # Button press that saves a snap shot of the system
         keyboard.press('s')
@@ -317,7 +304,7 @@ class collection_thread(threading.Thread):
         settings.stamp = str(time.ctime())
         settings.stamp=settings.stamp.replace(' ', '_')
         settings.stamp=settings.stamp.replace(':', '-')
-        os.mkdir(PATH+settings.stamp)
+        os.mkdir(self.path+settings.stamp)
         settings.capture.set()
         time.sleep(3)
         print('Press s to save snapshot')
@@ -328,7 +315,25 @@ class collection_thread(threading.Thread):
                 
 
 def process_sensor_frame(frame, **args):
-
+    '''
+    Function that processes the frames captured by the tactips.
+    
+    Parameters
+    ----------
+    **args
+        Passed to the camera thread as optional arguments:
+        crop : tuple
+            The desired coordinates to crop the frame at. [x0,y0,x1,y1]
+        threshold : tuple
+            The parameters for the Gaussian adaptive thresholding: (width, offset)
+        resolution : tuple
+            The resolution to return the frame as (used in resizing).
+    
+    Returns
+    ------
+    frame : np.array
+        An array containing the data for the processed frame.
+    '''
     crop = args['crop']
     threshold = args['threshold']
     resolution = args['res']
@@ -361,19 +366,20 @@ def main():
     print('[INFO] Calibrating camera')
     [ret, cam_mat, dist_mat, rvecs, tvecs] = calibrate('markers/camera_calibration/calibration_images')
 
-
     object = input('Enter the name of the object being used:')
-    mode = input('Collecting data for sensor pose (s) or object pose (o):')
-    global PATH
-    PATH = 'data/'+object+'/'
+    mode = input('Collecting data for sensor pose (s), object pose (o), or both (so):')
+
+    path = 'data/'+object+'/'
 
     # Initialise camera threads
-    sensor1 = camera_thread('Sensor1', 3, (1920,1080), mode, process_sensor_frame, True, res=(240,135), crop = [300, 0, 1600, 1080], threshold = (47, -4))
-    sensor2 = camera_thread('Sensor2', 1, (1920,1080), mode, process_sensor_frame, True, res=(240,135), crop = [300, 0, 1600, 1080], threshold = (59, -6))
-    external = camera_thread('external', 2, (1920,1080), mode, find_markers, True, cam_mat=cam_mat, dist_mat=dist_mat)
+    sensor1 = camera_thread('Sensor1', 3, (1920,1080), mode, path, process_sensor_frame, True, res=(240,135), crop = [300, 0, 1600, 1080], threshold = (47, -4))
+    sensor2 = camera_thread('Sensor2', 1, (1920,1080), mode, path, process_sensor_frame, True, res=(240,135), crop = [300, 0, 1600, 1080], threshold = (59, -6))
+    external = camera_thread('external', 2, (1920,1080), mode, path, find_markers, True, cam_mat=cam_mat, dist_mat=dist_mat)
 
-    capture_thread = collection_thread('data/'+object+'/')
+    # Initialise the capture thread
+    capture_thread = collection_thread(path)
 
+    # Begin the collection
     sensor1.start()
     sensor2.start()
     external.start()
