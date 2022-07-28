@@ -1,7 +1,5 @@
-from imutils.video import VideoStream
 import argparse
 import imutils
-import time
 import cv2 as cv
 import sys
 import numpy as np
