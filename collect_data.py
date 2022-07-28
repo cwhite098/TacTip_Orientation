@@ -1,16 +1,10 @@
-from distutils.log import error
-from importlib.resources import path
-from pickle import READONLY_BUFFER
 import cv2 as cv
 import threading
-from threading import Event
 import keyboard
 import time
 import json
 import os
-import sys
 import numpy as np
-from multiprocessing import Process
 from markers.camera_calibration.calibrate_camera import calibrate
 from markers.detect_markers import find_markers
 import settings
@@ -69,7 +63,6 @@ class camera_thread(threading.Thread):
                 frame = frame[0]
             else:
                 tvec_dict, rvec_dict = False, False
-
 
             if display_bool:
                 cv.imshow(display_name, frame)
@@ -202,15 +195,18 @@ class camera_thread(threading.Thread):
                 if len(buffers[i])>buffer_size:
                     buffers[i].pop(0)
 
-            output_rots.append(np.mean(buffers[i],axis=0) - reference) # get the relative rotations
+            output_rots.append(np.mean(buffers[i],axis=0)) # get the rotations from the buffer
             
         # Ensure the rotations are in [-pi, pi]
         for i, output in enumerate(output_rots):
-            if np.abs(output[i]) > 3.1416:
+            if np.abs(output[i]) > np.pi:
                 output[i] = output[i]-np.sign(output[i])*2*np.pi
             # convert to list for json dump
             output_rots[i] = output.tolist()
-        
+
+        for i, output in enumerate(output_rots):
+            output_rots[i] = output.tolist()
+
         # Convert reference
         reference = reference.tolist()
 
