@@ -1,7 +1,7 @@
 import numpy as np
 from tensorflow.keras.models import Sequential, load_model, Model
 from tensorflow.keras.layers import Dense, Conv2D, MaxPooling2D, Flatten, Dropout, Activation, BatchNormalization, Concatenate, Input
-from tensorflow.keras.optimizers import SGD, Adam
+from tensorflow.keras.optimizers import Adam
 import tensorflow.keras.regularizers as regularizers
 from tensorflow.keras.callbacks import EarlyStopping
 import tensorflow as tf
@@ -23,8 +23,8 @@ for gpu in gpus:
 def train_test_val_split(X, Y):
 
     train_ratio = 0.75
-    validation_ratio = 0.05
-    test_ratio = 0.2
+    validation_ratio = 0.1
+    test_ratio = 0.15
 
     # train is now 75% of the entire data set
     # the _junk suffix means that we drop that variable completely
@@ -102,6 +102,9 @@ class PoseNet():
 
         X = []
         Y = []
+        z_180_rot = np.array([0,0,np.pi])
+        z_180_mat = np.array([[0,0,0],[0,0,0],[0,0,0]])
+        mat180 = cv.Rodrigues(z_180_rot, z_180_mat)[0]
 
         available_shapes = os.listdir(path)
         for s in shapes:
@@ -136,14 +139,17 @@ class PoseNet():
                         target = np.array(object_rot)
                         Y.append(target)
 
-                elif option == 'sensor+object' or option == 'sensor+object_split' or option == 'relative':
+                elif option == 'sensor+object':
                     try:
-                        object_rot = rvec_dict['object']
-                        sensor1_rot = rvec_dict['left']
-                        sensor2_rot = rvec_dict['right']
+                        # Get the Euler angles - relative to the camera
+                        ref = np.array(rvec_dict['reference'])
+                        r_oc = np.array(rvec_dict['object'])
+                        r_rc = np.array(rvec_dict['right'])
+                        r_lc = np.array(rvec_dict['left'])
+                        r_tc = ref
                     except KeyError:
                         print('Reading not found')
-                    if len(object_rot)==2 or len(sensor1_rot)==2 or len(sensor2_rot)==2:
+                    if len(r_oc)==2 or len(r_lc)==2 or len(r_rc)==2:
                         print('ZERO ROTATION FOUND: '+example)
                         shutil.rmtree(path+'/'+s+'/'+example)
                     else:
@@ -151,18 +157,30 @@ class PoseNet():
                         X2 = []
                         if option == 'sensor+object':
                             X.append(np.vstack((sensor1, sensor2)))
-                        elif option == 'sensor+object_split':
-                            X1.append(sensor1)
-                            X2.append(sensor2)
-                            X.append([sensor1, sensor2])
 
-                        target = np.array([sensor1_rot[1], sensor1_rot[2], sensor2_rot[1], sensor2_rot[2], object_rot[0],
-                            object_rot[1], object_rot[2]])
+                            # Get rotation matrices
+                            R_tc = cv.Rodrigues(r_tc)[0]
+                            R_oc = cv.Rodrigues(r_oc)[0]
+                            R_rc = cv.Rodrigues(r_rc)[0]
+                            R_lc = cv.Rodrigues(r_lc)[0]
+
+                            # Move to the frame of the left sensor
+                            inv_trans = np.transpose(R_lc)
+
+                            # Get object relative to left sensor
+                            R_lo = np.matmul(inv_trans, R_oc)
+                            object_euler_l=cv.Rodrigues(R_lo)[0].flatten()
+
+                            # Move to the frame of the right sensor
+                            inv_trans = np.transpose(R_rc)
+
+                            # Get the object relative to the right sensor
+                            R_ro = np.matmul(inv_trans, R_oc)
+                            object_euler_r=cv.Rodrigues(R_ro)[0].flatten()
                         
-                        if option == 'relative':
-                            X.append(np.vstack((sensor1, sensor2)))
-                            target = np.array([sensor1_rot[0]-object_rot[0], sensor1_rot[1]-object_rot[1], sensor1_rot[2]-object_rot[2],
-                                                sensor2_rot[0]-object_rot[0], sensor2_rot[1]-object_rot[1], sensor2_rot[2]-object_rot[2]])
+
+                        target = np.array([object_euler_l[0], object_euler_l[1], object_euler_l[2], object_euler_r[0], object_euler_r[1],
+                            object_euler_r[2]])
 
                         Y.append(target)
                 
