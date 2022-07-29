@@ -11,7 +11,6 @@ font = {'family' : 'normal',
         'size'   : 13}
 
 matplotlib.rc('font', **font)
-
 matplotlib.rc('xtick', labelsize=10) 
 matplotlib.rc('ytick', labelsize=12)
 
@@ -20,10 +19,11 @@ def plot_angle_distribution(y_train, y_test, sensor, y_val=None):
 
     y_train = rad_to_degree(y_train)
     y_test = rad_to_degree(y_test)
+    if isinstance(y_val, np.ndarray):
+        y_val = rad_to_degree(y_val)
 
 
     if sensor == 'combined':
-
         plt.subplot(1,2,1)
         plt.scatter(y_train[:,0], y_train[:,1], label='Train')
         plt.scatter(y_test[:,0], y_test[:,1], label='Test')
@@ -50,12 +50,33 @@ def plot_angle_distribution(y_train, y_test, sensor, y_val=None):
         plt.title('Object Pitch vs Roll')
 
         plt.subplot(1,2,2)
-        plt.scatter(y_train[:,0], y_train[:,2], label='Train')
+        plt.scatter(y_train[:,0], y_train[:,2],  label='Train')
         plt.scatter(y_test[:,0], y_test[:,2], label='Test')
         if isinstance(y_val, np.ndarray):
             plt.scatter(y_val[:,0], y_val[:,2], label='Val')
         plt.legend(), plt.xlabel('Object Roll'), plt.ylabel('Object Pitch')
         plt.title('Object Yaw vs Roll')
+
+    elif sensor == 'sensor+object':
+        fig = plt.figure()
+
+        ax = fig.add_subplot(121,projection='3d')
+        ax.set_title('Relative Poses From Left Sensor')
+        ax.scatter(y_train[:,0], y_train[:,1], y_train[:,2],  label='Train')
+        ax.scatter(y_test[:,0], y_test[:,1], y_test[:,2], label='Test')
+        if isinstance(y_val, np.ndarray):
+            ax.scatter(y_val[:,0], y_val[:,1], y_val[:,2], label='Val')
+        ax.set_xlabel('$\phi$'), ax.set_ylabel(r'$\theta$'), ax.set_zlabel('$\psi$')
+        ax.legend()
+
+        ax1 = fig.add_subplot(122, projection='3d')
+        ax1.set_title('Relative Poses From Right Sensor')
+        ax1.scatter(y_train[:,3], y_train[:,4], y_train[:,5],  label='Train')
+        ax1.scatter(y_test[:,3], y_test[:,4], y_test[:,5], label='Test')
+        if isinstance(y_val, np.ndarray):
+            ax1.scatter(y_val[:,3], y_val[:,4], y_val[:,5], label='Val')
+        ax1.set_xlabel('$\phi$'), ax1.set_ylabel(r'$\theta$'), ax1.set_zlabel('$\psi$')
+        ax1.legend()
 
 
     else:
@@ -174,9 +195,10 @@ def main():
 
     plot_error_distributions()
     
-    net_path = 'saved_nets/object_Mon_Jul_25_17-05-24_2022'
+    net_path = 'saved_nets/sensor+object_Thu_Jul_28_13-37-49_2022'
+    mode = 'sensor+object'
 
-    sensor_net = model.PoseNet(  option = 'object',
+    sensor_net = model.PoseNet(  option = mode,
                     conv_activation = 'elu',
                     dropout_rate = 0.001,
                     l1_rate = 0.0001,
@@ -193,19 +215,18 @@ def main():
     sensor_net.load_net(net_path)
 
     path = 'C:/Users/chris/OneDrive/Uni/Summer_Research_Internship/Project/TacTip_Orientation/data'
-    x_train, x_test, x_val, y_train, y_test, y_val, test_scaler = sensor_net.read_data(['pose_dodec_so', 'pose_dodec'], path,
-                                                        option = 'object',
+    x_train, x_test, x_val, y_train, y_test, y_val, test_scaler = sensor_net.read_data(['pose_dodec_so'], path,
+                                                        option = mode,
                                                         val = True, 
-                                                        combine_shapes = True,
                                                         scale_data = False,
                                                         outlier_bool = False,
                                                         binarise=True)
 
-    #plot_angle_distribution(y_train, y_test, 'combined', y_val=None)
+    plot_angle_distribution(y_train, y_test, mode, y_val=y_val)
 
     pred = sensor_net.predict(x_test)
 
-    plot_prediction_line(y_test, pred, 3)
+    plot_prediction_line(y_test, pred, 6)
     
     return 0
 

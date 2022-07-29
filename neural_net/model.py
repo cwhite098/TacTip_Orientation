@@ -13,6 +13,7 @@ import cv2 as cv
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 import shutil
+from scipy.spatial.transform import Rotation as R
 
 # Enable GPU dynamic memory allocation
 gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -35,6 +36,9 @@ def train_test_val_split(X, Y):
     x_val, x_test, y_val, y_test = train_test_split(x_test, y_test, test_size=test_ratio/(test_ratio + validation_ratio)) 
 
     return x_train, x_test, x_val, y_train, y_test, y_val
+
+
+
 
 
 def remove_outliers(X, Y, lower, upper):
@@ -217,14 +221,20 @@ class PoseNet():
 
                             # Get object relative to left sensor
                             R_lo = np.matmul(inv_trans, R_oc)
-                            object_euler_l=cv.Rodrigues(R_lo)[0].flatten()
+                            #object_euler_l=cv.Rodrigues(R_lo)[0].flatten()
+
+                            R_lo = R.from_matrix(R_lo)
+                            object_euler_l = R_lo.as_euler('XYZ') # get extrinsic euler angles
 
                             # Move to the frame of the right sensor
                             inv_trans = np.transpose(R_rc)
 
                             # Get the object relative to the right sensor
                             R_ro = np.matmul(inv_trans, R_oc)
-                            object_euler_r=cv.Rodrigues(R_ro)[0].flatten()
+                            #object_euler_r=cv.Rodrigues(R_ro)[0].flatten() # the rodrigues vector is NOT the same as
+                                                                           # euler angles
+                            R_ro = R.from_matrix(R_ro)
+                            object_euler_r = R_ro.as_euler('XYZ') # get extrinsic euler angles
                         
                         target = np.array([object_euler_l[0], object_euler_l[1], object_euler_l[2], object_euler_r[0], object_euler_r[1],
                             object_euler_r[2]])
